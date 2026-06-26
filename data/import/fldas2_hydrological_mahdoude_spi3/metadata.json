@@ -1,0 +1,28 @@
+{
+  "dataset_key": "fldas2_hydrological_mahdoude_spi3",
+  "title": "FLDAS2 SPI-3 — Hydrological / Mahdoude",
+  "source_key": "fldas2",
+  "source_title": "FLDAS2",
+  "boundary_key": "hydrological_mahdoude",
+  "boundary_title": "Hydrological / Mahdoude",
+  "variable": "Rainf_tavg",
+  "input_units": "kg m-2 s-1",
+  "spatial_method": "exact polygon-cell intersection; spherical-area weighted mean precipitation",
+  "minimum_spatial_coverage": 0.8,
+  "grid_extent": [
+    42.0,
+    24.0,
+    64.0,
+    41.0
+  ],
+  "reference_start": "2001-01",
+  "reference_end": "2025-12",
+  "incomplete_months": [
+    "2024-10",
+    "2024-12"
+  ],
+  "min_month": "2000-10",
+  "max_month": "2026-05",
+  "feature_count": 37,
+  "excluded_feature_count": 0
+}

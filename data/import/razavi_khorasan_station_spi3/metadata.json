@@ -1,0 +1,28 @@
+{
+  "dataset_key": "razavi_khorasan_station_spi3",
+  "title": "Razavi Khorasan Stations SPI-3 — Stations",
+  "source_key": "razavi_khorasan_stations",
+  "source_title": "Razavi Khorasan Stations",
+  "boundary_key": "station",
+  "boundary_title": "Stations",
+  "variable": "rrr24",
+  "input_units": "mm",
+  "input_time_resolution": "daily",
+  "aggregation_method": "monthly sum from daily precipitation with >= 80% daily coverage",
+  "available_indices": [
+    "spi3",
+    "precip"
+  ],
+  "reference_start": "1991-01",
+  "reference_end": "2020-12",
+  "fallback_reference_to_available": true,
+  "minimum_reference_years": 20,
+  "feature_count": 178,
+  "min_month": "1951-01",
+  "max_month": "2025-09",
+  "duplicate_daily_rows_dropped": 2339,
+  "monthly_coverage_failures": 48800,
+  "fallback_reference_station_count": 129,
+  "configured_reference_insufficient_station_count": 0,
+  "input_csv": "/datasets/RazaviKhorasanStations.csv"
+}

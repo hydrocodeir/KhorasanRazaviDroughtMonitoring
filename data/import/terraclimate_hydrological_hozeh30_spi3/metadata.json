@@ -1,0 +1,25 @@
+{
+  "dataset_key": "terraclimate_hydrological_hozeh30_spi3",
+  "title": "TerraClimate SPI-3 — Hydrological / Hozeh30",
+  "source_key": "terraclimate",
+  "source_title": "TerraClimate",
+  "boundary_key": "hydrological_hozeh30",
+  "boundary_title": "Hydrological / Hozeh30",
+  "variable": "ppt",
+  "input_units": "mm",
+  "spatial_method": "exact polygon-cell intersection; spherical-area weighted mean precipitation",
+  "minimum_spatial_coverage": 0.8,
+  "grid_extent": [
+    -180.0,
+    -89.99999999999997,
+    180.0,
+    90.0
+  ],
+  "reference_start": "1981-01",
+  "reference_end": "2010-12",
+  "incomplete_months": [],
+  "min_month": "1950-01",
+  "max_month": "2025-12",
+  "feature_count": 4,
+  "excluded_feature_count": 0
+}

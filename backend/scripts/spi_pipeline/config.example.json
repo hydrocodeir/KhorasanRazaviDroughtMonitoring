@@ -1,0 +1,47 @@
+{
+  "boundary_root": "${DATASETS_ROOT}/geoBoundaries",
+  "output_root": "data/import",
+  "cache_root": "${SPI_CACHE_ROOT:-data/spi_cache}",
+  "scale": 3,
+  "minimum_reference_years": 20,
+  "minimum_spatial_coverage": 0.8,
+  "sources": [
+    {
+      "key": "terraclimate",
+      "title": "TerraClimate",
+      "root": "${DATASETS_ROOT}/TerraClimate/PPT",
+      "glob": "**/*.nc",
+      "variable": "ppt",
+      "time_resolution": "monthly",
+      "units": "mm",
+      "reference_start": "1981-01",
+      "reference_end": "2010-12"
+    },
+    {
+      "key": "fldas2",
+      "title": "FLDAS2",
+      "root": "${DATASETS_ROOT}/FLDAS2/Rainf_tavg",
+      "glob": "**/*.nc*",
+      "variable": "Rainf_tavg",
+      "time_resolution": "daily",
+      "units": "kg m-2 s-1",
+      "date_regex": "\\.A(\\d{8})\\.",
+      "date_format": "%Y%m%d",
+      "duration_seconds": 86400,
+      "reference_start": "2001-01",
+      "reference_end": "2025-12"
+    },
+    {
+      "key": "agera5",
+      "title": "AgERA5",
+      "root": "${DATASETS_ROOT}/AgERA5/precipitation",
+      "glob": "**/*.nc*",
+      "variable": "Precipitation_Flux",
+      "time_resolution": "daily",
+      "units": "mm d-1",
+      "duration_seconds": 86400,
+      "reference_start": "2001-01",
+      "reference_end": "2025-12"
+    }
+  ]
+}

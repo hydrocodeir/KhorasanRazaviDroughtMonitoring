@@ -1,0 +1,25 @@
+{
+  "dataset_key": "agera5_hydrological_mahdoude_spi3",
+  "title": "AgERA5 SPI-3 — Hydrological / Mahdoude",
+  "source_key": "agera5",
+  "source_title": "AgERA5",
+  "boundary_key": "hydrological_mahdoude",
+  "boundary_title": "Hydrological / Mahdoude",
+  "variable": "Precipitation_Flux",
+  "input_units": "mm d-1",
+  "spatial_method": "exact polygon-cell intersection; spherical-area weighted mean precipitation",
+  "minimum_spatial_coverage": 0.8,
+  "grid_extent": [
+    -17.95000000000921,
+    9.95000000000455,
+    65.04999999998607,
+    41.95000000000273
+  ],
+  "reference_start": "2001-01",
+  "reference_end": "2025-12",
+  "incomplete_months": [],
+  "min_month": "1979-01",
+  "max_month": "2026-05",
+  "feature_count": 37,
+  "excluded_feature_count": 0
+}

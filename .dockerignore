@@ -1,0 +1,11 @@
+.git
+.github
+.pytest_cache
+**/__pycache__
+**/*.pyc
+.env
+.env.prod
+data/import
+data/spi_cache
+data/data.csv
+*.parquet
