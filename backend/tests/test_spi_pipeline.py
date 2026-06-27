@@ -1,6 +1,8 @@
+import json
+
 import numpy as np
 
-from scripts.spi_pipeline.pipeline import Grid, _to_mm
+from scripts.spi_pipeline.pipeline import Grid, PipelineConfig, _to_mm
 
 
 def test_flux_to_daily_millimeters():
@@ -17,3 +19,28 @@ def test_grid_extent_uses_cell_edges_for_descending_latitude():
         lon_name="lon",
     )
     assert grid.extent == (0.0, 0.0, 2.0, 2.0)
+
+
+def test_pipeline_config_supports_multiple_scales(tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "boundary_root": "boundaries",
+                "output_root": "out",
+                "cache_root": "cache",
+                "scales": [12, 3, 6, 3],
+                "sources": [
+                    {
+                        "key": "terraclimate",
+                        "root": "datasets",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = PipelineConfig.load(config_path)
+
+    assert config.scales == (3, 6, 12)

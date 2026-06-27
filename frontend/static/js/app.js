@@ -201,7 +201,11 @@ async function loadMetaForSelectedDataset() {
   }
 
   if (meta.min_month && meta.max_month) {
-    setGlobalBounds(meta.min_month, meta.max_month);
+    const forecastMax = meta?.prediction?.forecast_max_month;
+    const maxMonth = forecastMax && monthToInt(forecastMax) > monthToInt(meta.max_month)
+      ? forecastMax
+      : meta.max_month;
+    setGlobalBounds(meta.min_month, maxMonth);
     if (!normalizeMonthInput(dateEl.value)) setDateValue(meta.max_month);
     syncGlobalSliderFromInput();
   }
@@ -287,6 +291,8 @@ let suggestionPointerActivated = false;
 // markers when the global map month changes without reloading the whole panel).
 let currentPanelSeries = [];
 let currentPanelFeatureName = null;
+let currentPanelForecast = [];
+let currentPredictionSummary = null;
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX = 180;
@@ -295,6 +301,7 @@ const panelKpiCache = new Map();
 const timeseriesCache = new Map();
 const derivedSeriesCache = new Map();
 const overviewCache = new Map();
+const predictionCache = new Map();
 
 const sourceEl = document.getElementById('source');
 const boundaryEl = document.getElementById('boundary');
@@ -326,6 +333,15 @@ const modalBackdropEl = document.getElementById('modalBackdrop');
 const panelSpinnerEl = document.getElementById('panelSpinner');
 const kpiGridEl = document.getElementById('kpiGrid');
 const mapLoadingEl = document.getElementById('mapLoading');
+const predictionSectionEl = document.getElementById('predictionSection');
+const predictionStatusEl = document.getElementById('predictionStatus');
+const predictionWindowEl = document.getElementById('predictionWindow');
+const predictionHorizonEl = document.getElementById('predictionHorizon');
+const predictionRmseEl = document.getElementById('predictionRmse');
+const predictionAccuracyEl = document.getElementById('predictionAccuracy');
+const predictionObservedEl = document.getElementById('predictionObserved');
+const predictionVersionsEl = document.getElementById('predictionVersions');
+const predictionEvalEl = document.getElementById('predictionEval');
 
 const mapSubtitleEl = document.getElementById('mapSubtitle');
 const overviewSubtitleEl = document.getElementById('overviewSubtitle');
@@ -430,6 +446,7 @@ function clearDatasetCaches() {
   timeseriesCache.clear();
   derivedSeriesCache.clear();
   overviewCache.clear();
+  predictionCache.clear();
 }
 
 function resetSelectionState() {
@@ -1105,6 +1122,57 @@ function classifyTrend(trend, alpha = 0.05) {
   return { category: 'none', symbol: '—', labelEn: 'No Significant Trend', labelFa: 'No Significant Trend', tone: 'neu' };
 }
 
+function erfApprox(x) {
+  const sign = x < 0 ? -1 : 1;
+  const ax = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * ax);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-ax * ax));
+  return sign * y;
+}
+
+function normalCdf(x) {
+  return 0.5 * (1 + erfApprox(x / Math.SQRT2));
+}
+
+function computeTrendStatsFromSeries(data) {
+  const values = (data || [])
+    .map((point) => Array.isArray(point) ? Number(point[1]) : Number(point?.value))
+    .filter((value) => Number.isFinite(value));
+  const n = values.length;
+  if (n < 2) {
+    return { tau: null, p_value: null, sen_slope: null, trend: '—' };
+  }
+
+  let s = 0;
+  const slopes = [];
+  for (let i = 0; i < n - 1; i += 1) {
+    for (let j = i + 1; j < n; j += 1) {
+      const diff = values[j] - values[i];
+      if (diff > 0) s += 1;
+      else if (diff < 0) s -= 1;
+      slopes.push(diff / (j - i));
+    }
+  }
+
+  const denom = n * (n - 1) / 2;
+  const tau = denom > 0 ? s / denom : null;
+  const varS = (n * (n - 1) * (2 * n + 5)) / 18;
+  let z = 0;
+  if (s > 0) z = (s - 1) / Math.sqrt(varS);
+  else if (s < 0) z = (s + 1) / Math.sqrt(varS);
+  const pValue = 2 * (1 - normalCdf(Math.abs(z)));
+  slopes.sort((a, b) => a - b);
+  const mid = Math.floor(slopes.length / 2);
+  const senSlope = slopes.length % 2 === 0 ? (slopes[mid - 1] + slopes[mid]) / 2 : slopes[mid];
+
+  return {
+    tau,
+    p_value: pValue,
+    sen_slope: senSlope,
+    trend: senSlope > 0 ? 'increasing' : (senSlope < 0 ? 'decreasing' : 'stable')
+  };
+}
+
 function trendLabelForIndex(indexName, trend) {
   const t = classifyTrend(trend, 0.05);
   if (isDroughtIndex(indexName)) return t;
@@ -1241,6 +1309,113 @@ function normalizeTimeseries(ts) {
     .filter((d) => d && d.date)
     // Keep missing months as null so the x-axis spans the full feature range.
     .map((d) => ({ date: d.date, value: (d.value == null ? null : Number(d.value)) }));
+}
+
+function normalizeForecastSeries(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  return rows
+    .filter((d) => d && d.date)
+    .map((d) => ({
+      date: d.date,
+      value: d.value == null ? null : Number(d.value),
+      lower: d.lower == null ? null : Number(d.lower),
+      upper: d.upper == null ? null : Number(d.upper),
+      lead_month: Number(d.lead_month || 0)
+    }));
+}
+
+function forecastRowForMonth(monthValue) {
+  const key = String(monthValue || '').slice(0, 7);
+  return currentPanelForecast.find((row) => String(row.date || '').slice(0, 7) === key) || null;
+}
+
+function isPredictionEligibleDataset() {
+  const entry = datasetByKey.get(levelEl.value);
+  const boundary = String(entry?.boundary_key || '').toLowerCase();
+  return boundary !== 'station' && !String(levelEl.value || '').toLowerCase().includes('station');
+}
+
+function formatPercent(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? `${(n * 100).toFixed(0)}%` : '—';
+}
+
+function renderPredictionPanel(payload) {
+  if (!predictionSectionEl) return;
+  const eligible = isPredictionEligibleDataset() && isDroughtIndex(indexEl.value);
+  const available = eligible && payload?.available && Array.isArray(payload?.data) && payload.data.length;
+  predictionSectionEl.classList.toggle('d-none', !eligible);
+  if (!eligible) return;
+
+  if (!available) {
+    if (predictionStatusEl) predictionStatusEl.textContent = 'Not trained';
+    if (predictionWindowEl) predictionWindowEl.textContent = '18 months';
+    if (predictionHorizonEl) predictionHorizonEl.textContent = '12 months';
+    if (predictionRmseEl) predictionRmseEl.textContent = '—';
+    if (predictionAccuracyEl) predictionAccuracyEl.textContent = '—';
+    if (predictionObservedEl) predictionObservedEl.textContent = '—';
+    if (predictionVersionsEl) predictionVersionsEl.textContent = '—';
+    if (predictionEvalEl) {
+      predictionEvalEl.textContent = 'Run the LSTM+attention training script to publish forecasts and backtest metrics for this dataset.';
+    }
+    return;
+  }
+
+  const evalRows = Array.isArray(payload.evaluation) ? payload.evaluation : [];
+  const firstLead = evalRows.find((row) => Number(row?.lead_month) === 1) || evalRows[0] || {};
+  const horizon = Number(payload.horizon || payload.data.length || 12);
+  const freshness = payload.freshness || {};
+  const versioning = payload.versioning || {};
+  if (predictionStatusEl) {
+    const status = freshness.is_stale ? 'Needs refresh' : 'Fresh';
+    predictionStatusEl.textContent = `${status} • Issue ${String(payload.issue_month || '—').replace(/-/g, '/')}`;
+  }
+  if (predictionWindowEl) predictionWindowEl.textContent = `${Number(payload.input_window || 18)} months`;
+  if (predictionHorizonEl) predictionHorizonEl.textContent = `${horizon} months`;
+  if (predictionRmseEl) predictionRmseEl.textContent = formatNumber(firstLead.rmse);
+  if (predictionAccuracyEl) predictionAccuracyEl.textContent = formatPercent(firstLead.drought_class_accuracy);
+  if (predictionObservedEl) predictionObservedEl.textContent = String(freshness.observed_max_month || '—').replace(/-/g, '/');
+  if (predictionVersionsEl) predictionVersionsEl.textContent = Number(versioning.version_count || 0).toLocaleString('en-US');
+  if (predictionEvalEl) {
+    const feedback = payload.realized_feedback || {};
+    const learned = Number(feedback.sample_count || 0) > 0
+      ? `Learned from ${Number(feedback.sample_count).toLocaleString('en-US')} realized forecasts; realized RMSE ${formatNumber(feedback.rmse)}.`
+      : '';
+    const report = payload?.training_params?.adaptive_inputs?.dataset_reports?.[levelEl.value] || null;
+    const inputMode = report
+      ? `Inputs: ${report.mode === 'multivariate' ? `${Number(report.helper_columns_used?.length || 0)} helper variables + target lags` : 'target lags only'}.`
+      : '';
+    const best = evalRows.slice(0, 3)
+      .map((row) => `L${row.lead_month}: RMSE ${formatNumber(row.rmse)}, class ${formatPercent(row.drought_class_accuracy)}`)
+      .join(' • ');
+    predictionEvalEl.textContent = [inputMode, learned, best || 'Backtest metrics are available after training completes.'].filter(Boolean).join(' ');
+  }
+}
+
+async function loadPredictionPayload(regionId, levelName, indexName) {
+  currentPanelForecast = [];
+  currentPredictionSummary = null;
+  if (!isPredictionEligibleDataset() || !isDroughtIndex(indexName)) {
+    renderPredictionPanel(null);
+    return null;
+  }
+  const key = `${regionId}|${levelName}|${indexName}|prediction`;
+  const payload = await fetchCached(
+    predictionCache,
+    key,
+    () => `${API_BASE}/prediction/forecast?region_id=${encodeURIComponent(regionId)}&level=${encodeURIComponent(levelName)}&index=${encodeURIComponent(indexName)}`
+  ).catch(() => ({ available: false, data: [] }));
+  currentPanelForecast = normalizeForecastSeries(payload?.data || []);
+  currentPredictionSummary = payload;
+  if (stationMinInt != null && stationMaxInt != null && currentPanelSeries.length) {
+    const observedMin = intToMonth(stationMinInt);
+    const observedSeriesMax = currentPanelSeries.length
+      ? String(currentPanelSeries[currentPanelSeries.length - 1].date || '').slice(0, 7)
+      : intToMonth(stationMaxInt);
+    syncPanelRangeToAvailableData(observedMin, observedSeriesMax);
+  }
+  renderPredictionPanel(payload);
+  return payload;
 }
 
 function getTrendLine(values) {
@@ -1446,7 +1621,15 @@ function applySeverityStyle(sev) {
 
 function renderKPI(kpi, featureName, indexLabel, panelMonth) {
   const droughtMode = isDroughtIndex(indexLabel);
-  const sev = droughtMode ? (kpi.severity || '-') : '—';
+  const forecastRow = forecastRowForMonth(panelMonth);
+  const effectiveKpi = forecastRow
+    ? {
+        ...kpi,
+        latest: forecastRow.value,
+        severity: droughtMode && Number.isFinite(Number(forecastRow.value)) ? classify(Number(forecastRow.value)) : (kpi.severity || '—')
+      }
+    : kpi;
+  const sev = droughtMode ? (effectiveKpi.severity || '-') : '—';
   document.getElementById('panelTitle').textContent = `${featureName}`;
   renderFeatureAttributes(selectedFeature);
   if (panelCountryEl) {
@@ -1462,22 +1645,34 @@ function renderKPI(kpi, featureName, indexLabel, panelMonth) {
     }
   }
   const m = panelMonth || getDateValue();
+  const predictedBadgeEl = document.getElementById('predictedBadge');
+  const isPredictedMonth = Boolean(forecastRow);
   document.getElementById('panelSubtitle').textContent = `Selected date: ${String(m).replace(/-/g, '/')}`;
   const metricLabelEl = document.getElementById('mainMetricLabel');
   if (metricLabelEl) metricLabelEl.textContent = `${formatIndexLabel(indexLabel)} value`;
-  document.getElementById('mainMetricValue').textContent = formatNumber(kpi.latest);
+  if (predictedBadgeEl) predictedBadgeEl.classList.toggle('d-none', !isPredictedMonth);
+  document.getElementById('mainMetricValue').textContent = formatNumber(effectiveKpi.latest);
   document.getElementById('severityBadge').textContent = droughtMode ? (severityLong[sev] || sev) : 'Climate variable';
   if (droughtMode) applySeverityStyle(sev);
+
+  const forecastTrend = computeTrendStatsFromSeries([
+    ...(currentPanelSeries || []).map((row) => [String(row.date).includes('T') ? row.date : `${row.date}T00:00:00Z`, Number(row.value)]),
+    ...currentPanelForecast.map((row) => [String(row.date).includes('T') ? row.date : `${row.date}T00:00:00Z`, Number(row.value)])
+  ]);
 
   document.getElementById('tauVal').textContent = formatNumber(kpi.trend?.tau);
   document.getElementById('pVal').textContent = formatPValue(kpi.trend?.p_value);
   document.getElementById('senVal').textContent = formatNumber(kpi.trend?.sen_slope);
+  document.getElementById('tauForecastVal').textContent = `With forecast: ${formatNumber(forecastTrend.tau)}`;
+  document.getElementById('pForecastVal').textContent = `With forecast: ${formatPValue(forecastTrend.p_value)}`;
+  document.getElementById('senForecastVal').textContent = `With forecast: ${formatNumber(forecastTrend.sen_slope)}`;
 
   // Trend status + note (3-class, consistent across map/tooltips/panel)
   const t = trendLabelForIndex(indexLabel, kpi.trend);
+  const tf = trendLabelForIndex(indexLabel, forecastTrend);
   const trendStatusEl = document.getElementById('trendStatus');
   if (trendStatusEl) {
-    trendStatusEl.textContent = `${t.symbol} ${t.labelEn}`;
+    trendStatusEl.textContent = `${t.symbol} ${t.labelEn} | ${tf.symbol} ${tf.labelEn} (with forecast)`;
     trendStatusEl.classList.toggle('trend-pos', t.tone === 'pos');
     trendStatusEl.classList.toggle('trend-neg', t.tone === 'neg');
     trendStatusEl.classList.toggle('trend-neu', t.tone === 'neu');
@@ -1487,7 +1682,7 @@ function renderKPI(kpi, featureName, indexLabel, panelMonth) {
   if (trendNoteEl) {
     const pNum = Number(kpi.trend?.p_value);
     if (!Number.isFinite(pNum)) trendNoteEl.textContent = '—';
-    else trendNoteEl.textContent = `p = ${formatPValue(pNum)} • ${t.labelEn}`;
+    else trendNoteEl.textContent = `Observed: p = ${formatPValue(pNum)} • ${t.labelEn} | With forecast: p = ${formatPValue(forecastTrend.p_value)} • ${tf.labelEn}`;
   }
 }
 
@@ -1510,6 +1705,8 @@ function renderPanelLoading(featureName = 'Region', panelMonth = null) {
   document.getElementById('panelSubtitle').textContent = `Selected date: ${String(m).replace(/-/g, '/')}`;
   const metricLabelEl = document.getElementById('mainMetricLabel');
   if (metricLabelEl) metricLabelEl.textContent = `${formatIndexLabel(indexEl.value)} value`;
+  const predictedBadgeEl = document.getElementById('predictedBadge');
+  if (predictedBadgeEl) predictedBadgeEl.classList.add('d-none');
   document.getElementById('mainMetricValue').textContent = '...';
   document.getElementById('severityBadge').textContent = 'Loading';
   const trendStatusEl = document.getElementById('trendStatus');
@@ -1518,6 +1715,10 @@ function renderPanelLoading(featureName = 'Region', panelMonth = null) {
   if (trendNoteEl) trendNoteEl.textContent = 'Loading...';
   ['tauVal', 'pVal', 'senVal'].forEach((id) => {
     document.getElementById(id).textContent = '...';
+  });
+  ['tauForecastVal', 'pForecastVal', 'senForecastVal'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = 'With forecast: ...';
   });
 }
 
@@ -1554,12 +1755,14 @@ function setTimelineDisabled(disabled) {
 function setNoDataMessage(show, message = 'No data for this selection') {
   const trendStatusEl = document.getElementById('trendStatus');
   const trendNoteEl = document.getElementById('trendNote');
+  const predictedBadgeEl = document.getElementById('predictedBadge');
   if (!show) {
     if (trendNoteEl?.dataset?.defaultText) {
       trendNoteEl.textContent = trendNoteEl.dataset.defaultText;
     }
     return;
   }
+  if (predictedBadgeEl) predictedBadgeEl.classList.add('d-none');
   if (trendStatusEl) trendStatusEl.textContent = '—';
   if (trendNoteEl) trendNoteEl.textContent = message;
 }
@@ -1690,16 +1893,16 @@ function getStartValueForLastYears(parsedData, years = 5) {
   return parsedData[idx][0];
 }
 
-function getInitialChartZoom(parsedData, years = 5) {
-  if (!Array.isArray(parsedData) || parsedData.length < 2) return null;
+function getInitialChartZoom(fullTimelineData, years = 5) {
+  if (!Array.isArray(fullTimelineData) || fullTimelineData.length < 2) return null;
 
-  const firstValue = parsedData[0]?.[0];
-  const lastValue = parsedData[parsedData.length - 1]?.[0];
+  const firstValue = fullTimelineData[0]?.[0];
+  const lastValue = fullTimelineData[fullTimelineData.length - 1]?.[0];
   if (!firstValue || !lastValue) return null;
 
   const fallbackWindow = Math.max(years * 12, 1);
-  const fallbackStartIndex = Math.max(parsedData.length - fallbackWindow, 0);
-  const fallbackNeedsZoom = parsedData.length > fallbackWindow;
+  const fallbackStartIndex = Math.max(fullTimelineData.length - fallbackWindow, 0);
+  const fallbackNeedsZoom = fullTimelineData.length > fallbackWindow;
 
   const firstDate = new Date(firstValue);
   const lastDate = new Date(lastValue);
@@ -1708,7 +1911,7 @@ function getInitialChartZoom(parsedData, years = 5) {
   if (!hasValidDates) {
     if (!fallbackNeedsZoom) return null;
     return {
-      startValue: parsedData[fallbackStartIndex]?.[0] ?? firstValue,
+      startValue: fullTimelineData[fallbackStartIndex]?.[0] ?? firstValue,
       endValue: lastValue
     };
   }
@@ -1719,9 +1922,43 @@ function getInitialChartZoom(parsedData, years = 5) {
   if (!needsZoom) return null;
 
   return {
-    startValue: getStartValueForLastYears(parsedData, years) || firstValue,
+    startValue: getStartValueForLastYears(fullTimelineData, years) || firstValue,
     endValue: lastValue
   };
+}
+
+function panelForecastMaxMonth() {
+  if (currentPredictionSummary?.forecast_max_month) {
+    return String(currentPredictionSummary.forecast_max_month);
+  }
+  if (currentPanelForecast.length) {
+    return String(currentPanelForecast[currentPanelForecast.length - 1].date || '').slice(0, 7);
+  }
+  return null;
+}
+
+function syncPanelRangeToAvailableData(observedMinMonth, observedMaxMonth) {
+  if (!observedMinMonth || !observedMaxMonth) return;
+  const forecastMaxMonth = panelForecastMaxMonth();
+  stationMinInt = monthToInt(observedMinMonth);
+  stationMaxInt = monthToInt(
+    forecastMaxMonth && monthToInt(forecastMaxMonth) > monthToInt(observedMaxMonth)
+      ? forecastMaxMonth
+      : observedMaxMonth
+  );
+  const base = (stationMonthInt != null) ? stationMonthInt : monthToInt(getDateValue());
+  stationMonthInt = clampInt(base, stationMinInt, stationMaxInt);
+
+  if (stationSliderEl) {
+    stationSliderEl.disabled = false;
+    stationSliderEl.min = 0;
+    stationSliderEl.max = Math.max(0, stationMaxInt - stationMinInt);
+    stationSliderEl.value = String(sliderUiFromOffset(stationSliderEl, stationMonthInt - stationMinInt));
+    paintRange(stationSliderEl);
+  }
+  if (stationRangeLabelEl) {
+    stationRangeLabelEl.textContent = `${observedMinMonth} → ${intToMonth(stationMaxInt)}`;
+  }
 }
 
 function renderChart(ts, indexLabel, mapMonth, panelMonth) {
@@ -1729,7 +1966,10 @@ function renderChart(ts, indexLabel, mapMonth, panelMonth) {
   const barClimateMode = !droughtMode && isBarClimateIndex(indexLabel);
   const selectedId = getFeatureId(selectedFeature) || 'unknown';
   const lastPoint = ts.length ? `${ts[ts.length - 1].date}|${ts[ts.length - 1].value}` : 'empty';
-  const derivedKey = `${selectedId}|${levelEl.value}|${indexLabel}|${mapMonth}|${panelMonth}|${ts.length}|${lastPoint}`;
+  const forecastLast = currentPanelForecast.length
+    ? `${currentPanelForecast[currentPanelForecast.length - 1].date}|${currentPanelForecast[currentPanelForecast.length - 1].value}|${currentPanelForecast[currentPanelForecast.length - 1].lower}|${currentPanelForecast[currentPanelForecast.length - 1].upper}`
+    : 'no-forecast';
+  const derivedKey = `${selectedId}|${levelEl.value}|${indexLabel}|${mapMonth}|${panelMonth}|${ts.length}|${lastPoint}|${currentPanelForecast.length}|${forecastLast}`;
   let cachedDerived = derivedSeriesCache.get(derivedKey);
   if (!cachedDerived) {
     const parsedData = ts.map((d) => {
@@ -1737,17 +1977,61 @@ function renderChart(ts, indexLabel, mapMonth, panelMonth) {
       const v = (d.value == null ? null : Number(d.value));
       return [iso, Number.isFinite(v) ? v : null];
     });
+    const forecastData = currentPanelForecast.map((d) => {
+      const iso = String(d.date).includes('T') ? d.date : `${d.date}T00:00:00Z`;
+      const v = d.value == null ? null : Number(d.value);
+      return [iso, Number.isFinite(v) ? v : null];
+    });
+    const forecastLower = currentPanelForecast.map((d) => {
+      const iso = String(d.date).includes('T') ? d.date : `${d.date}T00:00:00Z`;
+      const v = d.lower == null ? null : Number(d.lower);
+      return [iso, Number.isFinite(v) ? v : null];
+    });
+    const forecastUpper = currentPanelForecast.map((d) => {
+      const iso = String(d.date).includes('T') ? d.date : `${d.date}T00:00:00Z`;
+      const v = d.upper == null ? null : Number(d.upper);
+      return [iso, Number.isFinite(v) ? v : null];
+    });
+    const forecastBandBase = currentPanelForecast.map((d) => {
+      const iso = String(d.date).includes('T') ? d.date : `${d.date}T00:00:00Z`;
+      const v = d.lower == null ? null : Number(d.lower);
+      return [iso, Number.isFinite(v) ? v : null];
+    });
+    const forecastBandRange = currentPanelForecast.map((d) => {
+      const iso = String(d.date).includes('T') ? d.date : `${d.date}T00:00:00Z`;
+      const lower = d.lower == null ? null : Number(d.lower);
+      const upper = d.upper == null ? null : Number(d.upper);
+      const v = Number.isFinite(lower) && Number.isFinite(upper) ? Math.max(0, upper - lower) : null;
+      return [iso, v];
+    });
+    const lastObserved = [...parsedData].reverse().find((point) => point[1] != null);
+    const firstForecast = forecastData.length ? forecastData[0] : null;
+    const forecastConnector = (lastObserved && firstForecast)
+      ? [lastObserved, firstForecast]
+      : [];
+    const fullTimelineData = [...parsedData, ...forecastData]
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    const observedPlusForecastTrendData = calculateTrendLine(fullTimelineData);
     cachedDerived = {
       parsedData,
-      trendData: calculateTrendLine(parsedData)
+      trendData: calculateTrendLine(parsedData),
+      observedPlusForecastTrendData,
+      forecastData,
+      forecastConnector,
+      forecastLower,
+      forecastUpper,
+      forecastBandBase,
+      forecastBandRange,
+      fullTimelineData
     };
     derivedSeriesCache.set(derivedKey, cachedDerived);
   }
 
-  const { parsedData, trendData } = cachedDerived;
+  const { parsedData, trendData, observedPlusForecastTrendData, forecastData, forecastConnector, forecastLower, forecastUpper, forecastBandBase, forecastBandRange, fullTimelineData } = cachedDerived;
   const selectedDate = toChartMonthStart(mapMonth);
   const panelDate = toChartMonthStart(panelMonth);
   const nonDroughtLineMode = !droughtMode && !barClimateMode;
+  const primarySeriesData = droughtMode ? fullTimelineData : parsedData;
   const positiveAreaData = nonDroughtLineMode
     ? parsedData.map((point) => [point[0], point[1] != null && point[1] > 0 ? point[1] : null])
     : [];
@@ -1774,7 +2058,10 @@ function renderChart(ts, indexLabel, mapMonth, panelMonth) {
     { xAxis: panelDate, name: 'Panel' }
   ];
 
-  const initialZoom = chartZoomLast5Years ? getInitialChartZoom(parsedData, 5) : null;
+  const initialZoom = chartZoomLast5Years ? getInitialChartZoom(fullTimelineData, 5) : null;
+  const observedSeriesCountBeforeMain = nonDroughtLineMode ? 2 : 0;
+  const observedMainSeriesIndex = observedSeriesCountBeforeMain;
+  const forecastSeriesIndex = forecastData?.length ? observedMainSeriesIndex + 6 : null;
   // No separate timeline series; we use vertical markLines for both dates.
 
 
@@ -1817,7 +2104,7 @@ function renderChart(ts, indexLabel, mapMonth, panelMonth) {
 
         const visible = entries
           // Hide helper series from tooltip (Trend)
-          .filter((item) => !(String(item?.seriesName || '').startsWith('__')) && !['Trend'].includes(item?.seriesName))
+          .filter((item) => !(String(item?.seriesName || '').startsWith('__')) && !['Observed Trend', 'Trend + Forecast'].includes(item?.seriesName))
           .map((item) => {
             const value = Array.isArray(item.value) ? item.value[1] : item.value;
             return `${item.marker}${item.seriesName}: ${formatNumber(value)}`;
@@ -1827,7 +2114,19 @@ function renderChart(ts, indexLabel, mapMonth, panelMonth) {
         const primaryVal = Array.isArray(primary?.value) ? Number(primary.value[1]) : Number(primary?.value);
         const sev = (droughtMode && Number.isFinite(primaryVal)) ? classify(primaryVal) : null;
         const sevRow = sev ? `Severity: <strong>${sev}</strong>` : null;
-        const html = [axisValue, ...visible, sevRow].filter(Boolean).join('<br/>');
+        const axisMonth = (() => {
+          const dt = new Date(rawAxis);
+          if (!Number.isNaN(dt.getTime())) {
+            return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+          }
+          return String(rawAxis || '').slice(0, 7);
+        })();
+        const interval = currentPanelForecast.find((row) => String(row.date || '').slice(0, 7) === axisMonth);
+        const intervalRow = interval && Number.isFinite(interval.lower) && Number.isFinite(interval.upper)
+          ? `Uncertainty: <strong>${formatNumber(interval.lower)} to ${formatNumber(interval.upper)}</strong>`
+          : null;
+        const predictedRow = interval ? '<em>(Predicted Data)</em>' : null;
+        const html = [axisValue, ...visible, intervalRow, sevRow, predictedRow].filter(Boolean).join('<br/>');
         return `
           <div dir="ltr" style="text-align:left; unicode-bidi:plaintext;">
             ${html}
@@ -1861,7 +2160,8 @@ function renderChart(ts, indexLabel, mapMonth, panelMonth) {
         color: '#6b7280'
       },
       axisLine: { lineStyle: { color: '#d1d5db' } },
-      splitLine: { show: false }
+      splitLine: { show: false },
+      max: fullTimelineData?.length ? fullTimelineData[fullTimelineData.length - 1][0] : null
     },
     yAxis: {
       type: 'value',
@@ -1940,7 +2240,7 @@ function renderChart(ts, indexLabel, mapMonth, panelMonth) {
       {
         name: formatIndexLabel(indexLabel),
         type: barClimateMode ? 'bar' : 'line',
-        data: parsedData,
+        data: primarySeriesData,
         symbol: barClimateMode ? undefined : 'none',
         lineStyle: barClimateMode ? undefined : { width: 2, color: nonDroughtLineMode ? '#6b7280' : undefined },
         itemStyle: barClimateMode ? { color: '#2563eb' } : (nonDroughtLineMode ? { color: '#6b7280' } : undefined),
@@ -1955,7 +2255,7 @@ function renderChart(ts, indexLabel, mapMonth, panelMonth) {
         }
       },
       {
-        name: 'Trend',
+        name: 'Observed Trend',
         type: 'line',
         data: trendData,
         symbol: 'none',
@@ -1965,19 +2265,107 @@ function renderChart(ts, indexLabel, mapMonth, panelMonth) {
         lineStyle: { color: '#ef4444', width: 1.6, type: 'solid' },
         itemStyle: { color: '#ef4444' }
       },
+      ...(forecastData?.length ? [
+        {
+          name: 'Trend + Forecast',
+          type: 'line',
+          data: observedPlusForecastTrendData,
+          symbol: 'none',
+          silent: true,
+          tooltip: { show: false },
+          animation: false,
+          lineStyle: { color: '#2563eb', width: 1.8, type: 'dashed' },
+          itemStyle: { color: '#2563eb' }
+        }
+      ] : []),
+      ...(forecastData?.length ? [
+        {
+          name: '__forecast_connector',
+          type: 'line',
+          data: forecastConnector,
+          symbol: 'none',
+          silent: true,
+          tooltip: { show: false },
+          animation: false,
+          lineStyle: { color: 'rgba(15, 118, 110, 0.55)', width: 1.8, type: 'dashed' },
+          itemStyle: { color: 'rgba(15, 118, 110, 0.55)' }
+        },
+        {
+          name: '__forecast_band_base',
+          type: 'line',
+          data: forecastBandBase,
+          stack: '__forecast_band',
+          symbol: 'none',
+          silent: true,
+          tooltip: { show: false },
+          animation: false,
+          lineStyle: { opacity: 0, width: 0 },
+          itemStyle: { opacity: 0 },
+          areaStyle: { opacity: 0 }
+        },
+        {
+          name: '__forecast_band_range',
+          type: 'line',
+          data: forecastBandRange,
+          stack: '__forecast_band',
+          symbol: 'none',
+          silent: true,
+          tooltip: { show: false },
+          animation: false,
+          lineStyle: { opacity: 0, width: 0 },
+          itemStyle: { opacity: 0 },
+          areaStyle: { color: 'rgba(15, 118, 110, 0.18)' }
+        },
+        {
+          name: 'Forecast',
+          type: 'line',
+          data: forecastData,
+          symbol: 'circle',
+          symbolSize: 5,
+          animation: false,
+          lineStyle: { color: '#0f766e', width: 2.6, type: 'solid' },
+          itemStyle: { color: '#0f766e' },
+          z: 6
+        },
+        {
+          name: '__forecast_lower',
+          type: 'line',
+          data: forecastLower,
+          symbol: 'none',
+          silent: true,
+          tooltip: { show: false },
+          animation: false,
+          lineStyle: { color: 'rgba(15, 118, 110, 0.28)', width: 1, type: 'dotted' },
+          itemStyle: { color: 'rgba(15, 118, 110, 0.28)' }
+        },
+        {
+          name: '__forecast_upper',
+          type: 'line',
+          data: forecastUpper,
+          symbol: 'none',
+          silent: true,
+          tooltip: { show: false },
+          animation: false,
+          lineStyle: { color: 'rgba(15, 118, 110, 0.28)', width: 1, type: 'dotted' },
+          itemStyle: { color: 'rgba(15, 118, 110, 0.28)' }
+        }
+      ] : []),
       // Timeline markers are rendered via markLine.
     ]
   };
   if (nonDroughtLineMode) {
-    option.legend.data = [formatIndexLabel(indexLabel), 'Trend'];
+    option.legend.data = forecastData?.length
+      ? [formatIndexLabel(indexLabel), 'Observed Trend', 'Trend + Forecast', 'Forecast']
+      : [formatIndexLabel(indexLabel), 'Observed Trend'];
   }
+  if (droughtMode && forecastData?.length) option.legend.data = [formatIndexLabel(indexLabel), 'Observed Trend', 'Trend + Forecast', 'Forecast'];
   if (droughtMode) {
     option.yAxis.interval = 1;
     option.visualMap = {
       type: 'piecewise',
       show: false,
       dimension: 1,
-      seriesIndex: 0,
+      seriesIndex: forecastSeriesIndex != null ? [observedMainSeriesIndex, forecastSeriesIndex] : [observedMainSeriesIndex],
       pieces: [
         { min: 0, color: droughtColors['Normal/Wet'] },
         { min: -0.5, max: 0, color: '#c7eed8' },
@@ -2078,7 +2466,10 @@ function renderOverviewFromCounts(payload) {
     'D4': 'Exceptional Drought'
   };
 
-  const counts = payload?.counts || {};
+  const counts = payload?.counts || order.reduce((acc, key) => {
+    acc[key] = Number(payload?.[key] || 0);
+    return acc;
+  }, {});
   const total = order.reduce((a, k) => a + (counts[k] || 0), 0);
 
   const data = order
@@ -2442,6 +2833,8 @@ function clearSelectedFeatureState() {
   selectedFeature = null;
   currentPanelSeries = [];
   currentPanelFeatureName = null;
+  currentPanelForecast = [];
+  currentPredictionSummary = null;
   stationMinInt = null;
   stationMaxInt = null;
   stationMonthInt = null;
@@ -2452,6 +2845,7 @@ function clearSelectedFeatureState() {
     delete stationMonthLabelEl.dataset.month;
   }
   renderFeatureAttributes(null);
+  renderPredictionPanel(null);
   setHoverInfo(null);
   syncSelectedFeatureOverlay();
 }
@@ -2488,15 +2882,17 @@ async function updatePanelForMonth(newMonth) {
   if (reqId !== panelRequestSeq) return;
 
   const effective = kpi?.effective_month || monthStr;
-  if (effective && /^\d{4}-\d{2}$/.test(effective)) {
+  if (effective && /^\d{4}-\d{2}$/.test(effective) && !forecastRowForMonth(monthStr)) {
     stationMonthInt = clampInt(monthToInt(effective), stationMinInt, stationMaxInt);
     if (stationSliderEl) stationSliderEl.value = String(sliderUiFromOffset(stationSliderEl, stationMonthInt - stationMinInt));
     paintRange(stationSliderEl);
     if (stationMonthLabelEl) { stationMonthLabelEl.textContent = `Selected month: ${effective.replace(/-/g, '/')}`; stationMonthLabelEl.dataset.month = effective; }
   }
 
-  renderKPI(kpi, featureName, indexName, effective);
-  renderChart(currentPanelSeries, indexName, getDateValue(), effective);
+    await loadPredictionPayload(regionId, levelName, indexName);
+    const displayMonth = forecastRowForMonth(monthStr) ? monthStr : effective;
+    renderKPI(kpi, featureName, indexName, displayMonth);
+    renderChart(currentPanelSeries, indexName, getDateValue(), displayMonth);
   togglePanelSpinner(false);
 }
 
@@ -2649,24 +3045,13 @@ async function onRegionClick(feature) {
       return;
     }
 
-    // Configure panel (feature) slider to the FULL available range.
-    stationMinInt = monthToInt(minM);
-    stationMaxInt = monthToInt(maxM);
-    const base = (stationMonthInt != null) ? stationMonthInt : monthToInt(getDateValue());
-    stationMonthInt = clampInt(base, stationMinInt, stationMaxInt);
+    syncPanelRangeToAvailableData(minM, maxM);
 
-    if (stationSliderEl) {
-      stationSliderEl.disabled = false;
-      stationSliderEl.min = 0;
-      stationSliderEl.max = Math.max(0, stationMaxInt - stationMinInt);
-      stationSliderEl.value = String(sliderUiFromOffset(stationSliderEl, stationMonthInt - stationMinInt));
-      paintRange(stationSliderEl);
-    }
-    if (stationRangeLabelEl) {
-      stationRangeLabelEl.textContent = `${minM} → ${maxM}`;
-    }
+    let panelMonth = intToMonth(stationMonthInt);
+    if (stationMonthLabelEl) { stationMonthLabelEl.textContent = `Selected month: ${panelMonth.replace(/-/g, '/')}`; stationMonthLabelEl.dataset.month = panelMonth; }
 
-    const panelMonth = intToMonth(stationMonthInt);
+    await loadPredictionPayload(regionId, levelName, indexName);
+    panelMonth = intToMonth(stationMonthInt);
     if (stationMonthLabelEl) { stationMonthLabelEl.textContent = `Selected month: ${panelMonth.replace(/-/g, '/')}`; stationMonthLabelEl.dataset.month = panelMonth; }
 
     // KPI uses panel month (NOT global month). The backend auto-adjusts if missing.
@@ -2682,7 +3067,8 @@ async function onRegionClick(feature) {
 
     // If backend adjusted the month (missing data), sync the panel slider.
     const effectiveMonth = kpi?.effective_month || panelMonth;
-    if (effectiveMonth && /^\d{4}-\d{2}$/.test(effectiveMonth)) {
+    const displayMonth = forecastRowForMonth(panelMonth) ? panelMonth : effectiveMonth;
+    if (effectiveMonth && /^\d{4}-\d{2}$/.test(effectiveMonth) && !forecastRowForMonth(panelMonth)) {
       const effInt = monthToInt(effectiveMonth);
       if (stationMinInt != null && stationMaxInt != null) {
         stationMonthInt = clampInt(effInt, stationMinInt, stationMaxInt);
@@ -2691,8 +3077,8 @@ async function onRegionClick(feature) {
       }
     }
 
-    renderKPI(kpi, featureName, indexName, effectiveMonth);
-    renderChart(series, indexName, getDateValue(), effectiveMonth);
+    renderKPI(kpi, featureName, indexName, displayMonth);
+    renderChart(series, indexName, getDateValue(), displayMonth);
     togglePanelSpinner(false);
   } catch (err) {
     console.error('onRegionClick error:', err);

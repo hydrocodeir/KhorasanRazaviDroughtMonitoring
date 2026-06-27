@@ -233,6 +233,7 @@
                 <div class="value-box__row">
                   <span class="metric-label-group">
                     <span id="mainMetricLabel"></span>
+                    <span id="predictedBadge" class="predicted-badge d-none">Predicted</span>
                     <button id="indexHelpBtn" class="help-icon" type="button" title="Index guide"><i class="bi bi-exclamation-circle text-danger"></i></button>
                   </span>
                   <span id="severityBadge" class="severity-badge">-</span>
@@ -253,11 +254,11 @@
                 <p>Inspired by <a href="https://drought.eng.uci.edu/" target="_blank" rel="noopener noreferrer">drought.eng.uci.edu</a>.</p>
                 <p>Hao Z., AghaKouchak A., Nakhjiri N., Farahmand A. (2014). Global Integrated Drought Monitoring and Prediction System. <em>Scientific Data</em>, 1:140001. doi:10.1038/sdata.2014.1</p>
                 <p>Farahmand A., AghaKouchak A. (2015). A Generalized Framework for Deriving Nonparametric Standardized Drought Indicators. <em>Advances in Water Resources</em>, 76, 140-145. doi:10.1016/j.advwatres.2014.11.012</p>
-                <h6>What is SPI-3?</h6>
+                <h6>What is SPI-n?</h6>
                 <ul>
-                  <li>Uses a rolling 3-month aggregation window.</li>
-                  <li>Sensitive to short-term and seasonal variability.</li>
-                  <li>Useful for agricultural drought, soil moisture deficits, and short-term water stress.</li>
+                  <li>Uses a rolling n-month aggregation window, where n can be 1, 3, 6, 12, or another configured scale.</li>
+                  <li>Shorter scales are more sensitive to short-term and seasonal variability.</li>
+                  <li>Longer scales are more useful for accumulated drought, hydrological stress, and persistent deficits.</li>
                 </ul>
                 <h6>Drought severity classes</h6>
                 <p><strong>SPI ≥ -0.5:</strong> Normal/Wet conditions</p>
@@ -294,6 +295,43 @@
                 <div class="chart-wrap" aria-label="Time series chart"><div id="tsChart"></div></div>
               </div>
 
+              <section id="predictionSection" class="prediction-section d-none" aria-label="Prediction">
+                <div class="prediction-head">
+                  <div class="prediction-head__title">
+                    <i class="bi bi-stars"></i>
+                    <span>Prediction system</span>
+                  </div>
+                  <span id="predictionStatus" class="prediction-status">—</span>
+                </div>
+                <div class="prediction-grid">
+                  <div class="prediction-metric">
+                    <small>Input window</small>
+                    <strong id="predictionWindow">—</strong>
+                  </div>
+                  <div class="prediction-metric">
+                    <small>Forecast horizon</small>
+                    <strong id="predictionHorizon">—</strong>
+                  </div>
+                  <div class="prediction-metric">
+                    <small>RMSE</small>
+                    <strong id="predictionRmse">—</strong>
+                  </div>
+                  <div class="prediction-metric">
+                    <small>Class accuracy</small>
+                    <strong id="predictionAccuracy">—</strong>
+                  </div>
+                  <div class="prediction-metric">
+                    <small>Observed through</small>
+                    <strong id="predictionObserved">—</strong>
+                  </div>
+                  <div class="prediction-metric">
+                    <small>Model versions</small>
+                    <strong id="predictionVersions">—</strong>
+                  </div>
+                </div>
+                <div id="predictionEval" class="prediction-eval">—</div>
+              </section>
+
               <section class="trend-section" aria-label="Trend analysis">
                 <div class="trend-head">
                   <div class="trend-head__left">
@@ -321,9 +359,21 @@
                 </div>
 
                 <div id="kpiGrid" class="kpi-grid kpi-grid--trend" hx-swap="innerHTML">
-                  <div class="kpi-card"><small>Kendall's τ</small><strong id="tauVal">—</strong></div>
-                  <div class="kpi-card"><small>P-value</small><strong id="pVal">—</strong></div>
-                  <div class="kpi-card"><small>Sen's Slope</small><strong id="senVal">—</strong></div>
+                  <div class="kpi-card">
+                    <small>Kendall's τ</small>
+                    <strong id="tauVal">—</strong>
+                    <span id="tauForecastVal" class="kpi-subvalue">With forecast: —</span>
+                  </div>
+                  <div class="kpi-card">
+                    <small>P-value</small>
+                    <strong id="pVal">—</strong>
+                    <span id="pForecastVal" class="kpi-subvalue">With forecast: —</span>
+                  </div>
+                  <div class="kpi-card">
+                    <small>Sen's Slope</small>
+                    <strong id="senVal">—</strong>
+                    <span id="senForecastVal" class="kpi-subvalue">With forecast: —</span>
+                  </div>
                 </div>
 
                 <div id="trendHelpPanel" class="help-panel d-none tiny-font">
@@ -393,9 +443,9 @@
           <ul class="clean-list">
             <li><code>GET /datasets</code> — list available layers</li>
             <li><code>GET /meta?level=station</code> — metadata (time range + indices)</li>
-            <li><code>GET /mapdata?level=station&amp;index=spi3&amp;date=2020-01</code> — map data</li>
-            <li><code>GET /timeseries?region_id=10001&amp;level=station&amp;index=spi3</code> — time series</li>
-            <li><code>GET /kpi?region_id=10001&amp;level=station&amp;index=spi3&amp;date=2020-01</code> — KPI + trend</li>
+            <li><code>GET /mapdata?level=station&amp;index=spi6&amp;date=2020-01</code> — map data</li>
+            <li><code>GET /timeseries?region_id=10001&amp;level=station&amp;index=spi6</code> — time series</li>
+            <li><code>GET /kpi?region_id=10001&amp;level=station&amp;index=spi6&amp;date=2020-01</code> — KPI + trend</li>
           </ul>
           <p class="mb-1"><strong>End-to-end cURL example:</strong></p>
           <pre class="mb-2" style="white-space: pre-wrap;">

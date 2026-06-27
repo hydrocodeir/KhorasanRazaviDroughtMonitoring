@@ -932,6 +932,71 @@ input[type="range"]:disabled {
   box-shadow: 0 0 0 1px rgba(16, 24, 40, 0.08);
 }
 
+.prediction-section {
+  margin-top: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  background: #ffffff;
+}
+
+.prediction-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.prediction-head__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 900;
+  font-size: 0.95rem;
+}
+
+.prediction-status {
+  color: var(--muted);
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.prediction-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.prediction-metric {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  background: #f8fafc;
+}
+
+.prediction-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  margin-bottom: 4px;
+}
+
+.prediction-metric strong {
+  display: block;
+  color: var(--ink);
+  font-size: 0.92rem;
+  line-height: 1.15;
+}
+
+.prediction-eval {
+  margin-top: 10px;
+  color: var(--muted-2);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 /* Region KPI box */
 
 .value-box {
@@ -967,6 +1032,21 @@ input[type="range"]:disabled {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+}
+
+.predicted-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  color: #2563eb;
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .metric-info {
@@ -1156,6 +1236,14 @@ input[type="range"]:disabled {
 
 .kpi-card strong {
   font-size: 1.08rem;
+}
+
+.kpi-subvalue {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
 }
 
 .trend-text {

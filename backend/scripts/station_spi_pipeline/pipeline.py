@@ -6,6 +6,7 @@ import os
 import re
 from calendar import monthrange
 from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -40,12 +41,33 @@ def _path_from_raw(value: str | Path) -> Path:
     return Path(_expand_env_tokens(str(value)))
 
 
+def _normalize_scales(raw_scales: Any) -> tuple[int, ...]:
+    if raw_scales is None:
+        return (3,)
+    if isinstance(raw_scales, (int, str)):
+        raw_scales = [raw_scales]
+    scales = tuple(sorted({max(1, int(value)) for value in raw_scales}))
+    return scales or (3,)
+
+
+def _scale_template_from_legacy(value: str, scale: int) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return text
+    updated = re.sub(r"spi\d+\b", f"spi{scale}", text, flags=re.IGNORECASE)
+    updated = re.sub(r"SPI-\d+\b", f"SPI-{scale}", updated)
+    if updated != text:
+        return updated
+    return f"{text}_spi{scale}"
+
+
 @dataclass(frozen=True)
 class StationSpiConfig:
     input_csv: Path
     output_root: Path
     dataset_key: str
     title: str
+    scales: tuple[int, ...]
     source_key: str
     source_title: str
     boundary_key: str
@@ -76,11 +98,12 @@ class StationSpiConfig:
             output_root=_path_from_raw(raw.get("output_root", "data/import")),
             dataset_key=dataset_key,
             title=str(raw.get("title") or dataset_key),
+            scales=_normalize_scales(raw.get("scales", raw.get("scale", 3))),
             source_key=_slug(raw.get("source_key") or dataset_key),
             source_title=str(raw.get("source_title") or raw.get("title") or dataset_key),
             boundary_key=_slug(raw.get("boundary_key") or "station"),
             boundary_title=str(raw.get("boundary_title") or "Stations"),
-            scale=int(raw.get("scale", 3)),
+            scale=max(1, int(raw.get("scale", 3))),
             chunksize=max(10_000, int(raw.get("chunksize", 250_000))),
             compression=str(raw.get("compression", "zstd")),
             encoding=str(raw.get("encoding", "utf-8-sig")),
@@ -96,6 +119,16 @@ class StationSpiConfig:
             elevation_column=raw.get("elevation_column"),
             date_column=str(raw.get("date_column", "date")),
             precip_column=str(raw.get("precip_column", "rrr24")),
+        )
+
+    def with_scale(self, scale: int) -> "StationSpiConfig":
+        scale = max(1, int(scale))
+        return replace(
+            self,
+            dataset_key=_slug(_scale_template_from_legacy(self.dataset_key, scale)),
+            title=_scale_template_from_legacy(self.title, scale),
+            scale=scale,
+            scales=(scale,),
         )
 
 
@@ -182,6 +215,11 @@ def discover_station_file(config: StationSpiConfig) -> dict[str, Any]:
     return {
         "dataset_key": config.dataset_key,
         "title": config.title,
+        "scales": list(config.scales),
+        "dataset_keys_by_scale": {
+            str(scale): config.with_scale(scale).dataset_key
+            for scale in config.scales
+        },
         "input_csv": str(config.input_csv),
         "columns": header,
         "precip_column": config.precip_column,
@@ -213,9 +251,17 @@ def _iter_station_chunks(config: StationSpiConfig):
 def run_station_pipeline(
     config: StationSpiConfig,
     *,
+    scales: set[int] | None = None,
     discover_only: bool = False,
 ) -> list[dict[str, Any]]:
-    inventory = discover_station_file(config)
+    requested_scales = tuple(
+        scale for scale in config.scales
+        if scales is None or scale in scales
+    )
+    if not requested_scales:
+        raise ValueError("No station SPI scales matched the requested selection")
+
+    inventory = discover_station_file(replace(config, scales=requested_scales))
     if discover_only:
         return [inventory]
 
@@ -308,123 +354,132 @@ def run_station_pipeline(
     month_index = pd.DatetimeIndex(all_months)
 
     station_ids = station_info["station_id"].astype(str).tolist()
-    spi_matrix = np.full((len(all_months), len(station_ids)), np.nan, dtype=np.float32)
     precip_matrix = np.full((len(all_months), len(station_ids)), np.nan, dtype=np.float32)
-    fallback_stations = 0
-    insufficient_stations = 0
     coverage_failures = int(monthly["monthly_precip_mm"].isna().sum())
-    reference_modes: dict[str, str] = {}
 
     monthly_by_station = {
         str(station_id): frame.set_index("month").sort_index()
         for station_id, frame in monthly.groupby("station_id")
     }
+    base_geo_frame = station_info.copy()
+    base_geo_frame["feature_id"] = base_geo_frame["station_id"].astype(str)
+    base_geo_frame["name"] = base_geo_frame["station_name"].astype(str)
 
-    for idx, station_id in enumerate(station_ids):
-        station_months = monthly_by_station.get(station_id)
-        if station_months is None:
-            insufficient_stations += 1
-            continue
-        precip = station_months.reindex(all_months)["monthly_precip_mm"].to_numpy(dtype=float)
-        spi, reference_mode = _compute_spi_for_station(precip, month_index, config)
-        reference_modes[station_id] = reference_mode
-        if reference_mode == "fallback_available":
-            fallback_stations += 1
-        elif reference_mode == "configured_insufficient":
-            insufficient_stations += 1
-        spi_matrix[:, idx] = spi
-        precip_matrix[:, idx] = precip.astype(np.float32)
+    results: list[dict[str, Any]] = []
+    for scale in requested_scales:
+        scale_config = config.with_scale(scale)
+        spi_matrix = np.full((len(all_months), len(station_ids)), np.nan, dtype=np.float32)
+        fallback_stations = 0
+        insufficient_stations = 0
+        reference_modes: dict[str, str] = {}
 
-    output_dir = config.output_root / config.dataset_key
-    output_dir.mkdir(parents=True, exist_ok=True)
+        for idx, station_id in enumerate(station_ids):
+            station_months = monthly_by_station.get(station_id)
+            if station_months is None:
+                insufficient_stations += 1
+                continue
+            precip = station_months.reindex(all_months)["monthly_precip_mm"].to_numpy(dtype=float)
+            spi, reference_mode = _compute_spi_for_station(precip, month_index, scale_config)
+            reference_modes[station_id] = reference_mode
+            if reference_mode == "fallback_available":
+                fallback_stations += 1
+            elif reference_mode == "configured_insufficient":
+                insufficient_stations += 1
+            spi_matrix[:, idx] = spi
+            precip_matrix[:, idx] = precip.astype(np.float32)
 
-    geo_frame = station_info.copy()
-    geo_frame["feature_id"] = geo_frame["station_id"].astype(str)
-    geo_frame["name"] = geo_frame["station_name"].astype(str)
-    geo_frame["reference_mode"] = geo_frame["feature_id"].map(lambda sid: reference_modes.get(str(sid), "configured"))
-    geo_frame["uses_fallback_reference"] = geo_frame["reference_mode"].eq("fallback_available")
-    geo_frame["reference_label"] = geo_frame["reference_mode"].map(lambda mode: _reference_label(config, mode))
-    geo_frame["geometry"] = [Point(xy) for xy in zip(geo_frame["lon"], geo_frame["lat"])]
-    geo = gpd.GeoDataFrame(geo_frame, geometry="geometry", crs="EPSG:4326")
-    geo.to_parquet(output_dir / "geoinfo.parquet", compression=config.compression, index=False)
+        output_dir = scale_config.output_root / scale_config.dataset_key
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    schema = pa.schema(
-        [
-            ("feature_id", pa.string()),
-            ("date", pa.timestamp("ms")),
-            (f"spi{config.scale}", pa.float32()),
-            ("precip", pa.float32()),
-        ]
-    )
-    writer = pq.ParquetWriter(
-        output_dir / "data.parquet",
-        schema,
-        compression=config.compression,
-        use_dictionary=["feature_id"],
-        write_statistics=True,
-    )
-    try:
-        chunk_months = 24
-        feature_ids = geo["feature_id"].astype(str).to_numpy()
-        for start in range(0, len(all_months), chunk_months):
-            end = min(len(all_months), start + chunk_months)
-            count = end - start
-            table = pa.Table.from_arrays(
-                [
-                    pa.array(np.tile(feature_ids, count), type=pa.string()),
-                    pa.array(
-                        np.repeat(np.asarray(all_months[start:end], dtype="datetime64[ms]"), len(feature_ids)),
-                        type=pa.timestamp("ms"),
-                    ),
-                    pa.array(spi_matrix[start:end].reshape(-1), type=pa.float32(), from_pandas=True),
-                    pa.array(precip_matrix[start:end].reshape(-1), type=pa.float32(), from_pandas=True),
-                ],
-                schema=schema,
-            )
-            writer.write_table(table)
-    finally:
-        writer.close()
+        geo_frame = base_geo_frame.copy()
+        geo_frame["reference_mode"] = geo_frame["feature_id"].map(lambda sid: reference_modes.get(str(sid), "configured"))
+        geo_frame["uses_fallback_reference"] = geo_frame["reference_mode"].eq("fallback_available")
+        geo_frame["reference_label"] = geo_frame["reference_mode"].map(lambda mode: _reference_label(scale_config, mode))
+        geo_frame["geometry"] = [Point(xy) for xy in zip(geo_frame["lon"], geo_frame["lat"])]
+        geo = gpd.GeoDataFrame(geo_frame, geometry="geometry", crs="EPSG:4326")
+        geo.to_parquet(output_dir / "geoinfo.parquet", compression=scale_config.compression, index=False)
 
-    metadata = {
-        "dataset_key": config.dataset_key,
-        "title": config.title,
-        "source_key": config.source_key,
-        "source_title": config.source_title,
-        "boundary_key": config.boundary_key,
-        "boundary_title": config.boundary_title,
-        "variable": config.precip_column,
-        "input_units": "mm",
-        "input_time_resolution": "daily",
-        "aggregation_method": f"monthly sum from daily precipitation with >= {config.minimum_daily_coverage_ratio:.0%} daily coverage",
-        "available_indices": [f"spi{config.scale}", "precip"],
-        "reference_start": config.reference_start,
-        "reference_end": config.reference_end,
-        "fallback_reference_to_available": config.fallback_reference_to_available,
-        "minimum_reference_years": config.minimum_reference_years,
-        "feature_count": int(len(geo)),
-        "min_month": str(min_month.strftime("%Y-%m")),
-        "max_month": str(max_month.strftime("%Y-%m")),
-        "duplicate_daily_rows_dropped": int(duplicate_rows),
-        "monthly_coverage_failures": int(coverage_failures),
-        "fallback_reference_station_count": int(fallback_stations),
-        "configured_reference_insufficient_station_count": int(insufficient_stations),
-        "input_csv": str(config.input_csv),
-    }
-    (output_dir / "metadata.json").write_text(
-        json.dumps(metadata, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+        schema = pa.schema(
+            [
+                ("feature_id", pa.string()),
+                ("date", pa.timestamp("ms")),
+                (f"spi{scale_config.scale}", pa.float32()),
+                ("precip", pa.float32()),
+            ]
+        )
+        writer = pq.ParquetWriter(
+            output_dir / "data.parquet",
+            schema,
+            compression=scale_config.compression,
+            use_dictionary=["feature_id"],
+            write_statistics=True,
+        )
+        try:
+            chunk_months = 24
+            feature_ids = geo["feature_id"].astype(str).to_numpy()
+            for start in range(0, len(all_months), chunk_months):
+                end = min(len(all_months), start + chunk_months)
+                count = end - start
+                table = pa.Table.from_arrays(
+                    [
+                        pa.array(np.tile(feature_ids, count), type=pa.string()),
+                        pa.array(
+                            np.repeat(np.asarray(all_months[start:end], dtype="datetime64[ms]"), len(feature_ids)),
+                            type=pa.timestamp("ms"),
+                        ),
+                        pa.array(spi_matrix[start:end].reshape(-1), type=pa.float32(), from_pandas=True),
+                        pa.array(precip_matrix[start:end].reshape(-1), type=pa.float32(), from_pandas=True),
+                    ],
+                    schema=schema,
+                )
+                writer.write_table(table)
+        finally:
+            writer.close()
 
-    return [
-        {
-            "dataset_key": config.dataset_key,
-            "output_dir": str(output_dir),
+        metadata = {
+            "dataset_key": scale_config.dataset_key,
+            "title": scale_config.title,
+            "source_key": scale_config.source_key,
+            "source_title": scale_config.source_title,
+            "boundary_key": scale_config.boundary_key,
+            "boundary_title": scale_config.boundary_title,
+            "scale": scale_config.scale,
+            "variable": scale_config.precip_column,
+            "input_units": "mm",
+            "input_time_resolution": "daily",
+            "aggregation_method": f"monthly sum from daily precipitation with >= {scale_config.minimum_daily_coverage_ratio:.0%} daily coverage",
+            "available_indices": [f"spi{scale_config.scale}", "precip"],
+            "reference_start": scale_config.reference_start,
+            "reference_end": scale_config.reference_end,
+            "fallback_reference_to_available": scale_config.fallback_reference_to_available,
+            "minimum_reference_years": scale_config.minimum_reference_years,
             "feature_count": int(len(geo)),
-            "min_month": metadata["min_month"],
-            "max_month": metadata["max_month"],
-            "fallback_reference_station_count": int(fallback_stations),
-            "configured_reference_insufficient_station_count": int(insufficient_stations),
+            "min_month": str(min_month.strftime("%Y-%m")),
+            "max_month": str(max_month.strftime("%Y-%m")),
             "duplicate_daily_rows_dropped": int(duplicate_rows),
             "monthly_coverage_failures": int(coverage_failures),
+            "fallback_reference_station_count": int(fallback_stations),
+            "configured_reference_insufficient_station_count": int(insufficient_stations),
+            "input_csv": str(scale_config.input_csv),
         }
-    ]
+        (output_dir / "metadata.json").write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        results.append(
+            {
+                "dataset_key": scale_config.dataset_key,
+                "scale": scale_config.scale,
+                "output_dir": str(output_dir),
+                "feature_count": int(len(geo)),
+                "min_month": metadata["min_month"],
+                "max_month": metadata["max_month"],
+                "fallback_reference_station_count": int(fallback_stations),
+                "configured_reference_insufficient_station_count": int(insufficient_stations),
+                "duplicate_daily_rows_dropped": int(duplicate_rows),
+                "monthly_coverage_failures": int(coverage_failures),
+            }
+        )
+
+    return results

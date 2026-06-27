@@ -24,6 +24,12 @@ from .datasets_store import (
     find_effective_month_for_value,
     list_datasets,
 )
+from .prediction_store import (
+    fetch_prediction_forecast,
+    fetch_prediction_map_values,
+    fetch_prediction_summary,
+    latest_prediction_max_month,
+)
 from .settings import settings
 from .utils import drought_class, mann_kendall_and_sen
 
@@ -95,6 +101,40 @@ def trend_payload(row: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
+def prediction_overview_payload(level: str, index: str, month: str) -> dict[str, Any] | None:
+    values_by_feature = fetch_prediction_map_values(dataset_key=level, index=index, yyyymm=month)
+    values = [v for v in values_by_feature.values() if v is not None]
+    if not values:
+        return None
+    is_drought = index.lower().startswith(("spi", "spei"))
+    if is_drought:
+        order = ["Normal/Wet", "D0", "D1", "D2", "D3", "D4"]
+        counts = {key: 0 for key in order}
+        for value in values:
+            counts[drought_class(value)] = counts.get(drought_class(value), 0) + 1
+        return {
+            "mode": "drought",
+            "date": month,
+            "index": index,
+            "with_value": len(values),
+            "missing": 0,
+            "prediction": True,
+            "counts": counts,
+            **counts,
+        }
+    return {
+        "mode": "climate",
+        "date": month,
+        "index": index,
+        "with_value": len(values),
+        "missing": 0,
+        "prediction": True,
+        "min": min(values),
+        "max": max(values),
+        "mean": sum(values) / len(values),
+    }
+
+
 def enrich_map_features_with_drought_and_trend(
     features: list[dict[str, Any]],
     index: str,
@@ -159,7 +199,13 @@ async def invalidate_cache(prefix: str | None = Query(default="api:")):
 @app.get("/meta")
 async def meta(level: str = Query("station")):
     try:
-        return await run_in_threadpool(fetch_meta, level)
+        payload = await run_in_threadpool(fetch_meta, level)
+        prediction_max = await run_in_threadpool(latest_prediction_max_month, dataset_key=level)
+        payload["prediction"] = {
+            "available": bool(prediction_max),
+            "forecast_max_month": prediction_max,
+        }
+        return payload
     except Exception as exc:
         raise dataset_unavailable_http_exc() from exc
 
@@ -216,6 +262,17 @@ async def get_mapdata(
             index=index,
             trends_by_feature_id=trends,
         )
+        prediction_values = fetch_prediction_map_values(dataset_key=level, index=index, yyyymm=date)
+        if prediction_values:
+            for feature in feature_collection.get("features", []):
+                props = feature.setdefault("properties", {})
+                fid = str(props.get("id"))
+                if fid in prediction_values:
+                    props["value"] = prediction_values[fid]
+                    props["has_value"] = prediction_values[fid] is not None
+                    props["is_prediction"] = True
+                    props["severity"] = drought_class(prediction_values[fid]) if index.lower().startswith(("spi", "spei")) and prediction_values[fid] is not None else props.get("severity", "No Data")
+            feature_collection.setdefault("meta", {})["prediction"] = True
         return feature_collection
 
     try:
@@ -232,7 +289,8 @@ async def overview(level: str = "station", index: str = "spi3", date: str = "202
     try:
         return await run_cached(
             key,
-            lambda: fetch_overview_counts(dataset_key=level, index=index, yyyymm=date),
+            lambda: prediction_overview_payload(level, index, date)
+            or fetch_overview_counts(dataset_key=level, index=index, yyyymm=date),
             settings.cache_ttl_short_seconds,
         )
     except ValueError as exc:
@@ -258,6 +316,36 @@ async def get_timeseries(
         return await run_cached(
             key,
             lambda: fetch_timeseries_full(dataset_key=level, feature_id=region_id, index=index),
+            settings.cache_ttl_medium_seconds,
+        )
+    except ValueError as exc:
+        raise api_error(400, "invalid_request", str(exc)) from exc
+    except Exception as exc:
+        raise dataset_unavailable_http_exc() from exc
+
+
+@app.get("/prediction/summary")
+async def prediction_summary(level: str = "station", index: str = "spi3"):
+    key = f"api:prediction:summary:{level}:{index}"
+    try:
+        return await run_cached(
+            key,
+            lambda: fetch_prediction_summary(dataset_key=level, index=index),
+            settings.cache_ttl_medium_seconds,
+        )
+    except ValueError as exc:
+        raise api_error(400, "invalid_request", str(exc)) from exc
+    except Exception as exc:
+        raise dataset_unavailable_http_exc() from exc
+
+
+@app.get("/prediction/forecast")
+async def prediction_forecast(region_id: str, level: str = "station", index: str = "spi3"):
+    key = f"api:prediction:forecast:{level}:{index}:{region_id}"
+    try:
+        return await run_cached(
+            key,
+            lambda: fetch_prediction_forecast(dataset_key=level, feature_id=region_id, index=index),
             settings.cache_ttl_medium_seconds,
         )
     except ValueError as exc:

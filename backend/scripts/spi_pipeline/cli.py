@@ -14,6 +14,7 @@ def main() -> None:
     parser.add_argument("--config", required=True, help="Pipeline JSON configuration")
     parser.add_argument("--source", action="append", help="Source key; repeat to select several")
     parser.add_argument("--boundary", action="append", help="Boundary key; repeat to select several")
+    parser.add_argument("--scale", action="append", type=int, help="SPI scale in months; repeat to generate several scales")
     parser.add_argument("--discover", action="store_true", help="Print discovered inputs without processing")
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
@@ -27,6 +28,7 @@ def main() -> None:
         config,
         source_keys={_slug(v) for v in args.source} if args.source else None,
         boundary_keys={_slug(v) for v in args.boundary} if args.boundary else None,
+        scales={max(1, int(v)) for v in args.scale} if args.scale else None,
         discover_only=args.discover,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))

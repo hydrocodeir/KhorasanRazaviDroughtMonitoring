@@ -100,7 +100,7 @@ class PipelineConfig:
     output_root: Path
     cache_root: Path
     sources: tuple[SourceConfig, ...]
-    scale: int = 3
+    scales: tuple[int, ...] = (3,)
     minimum_reference_years: int = 20
     minimum_spatial_coverage: float = 0.8
     compression: str = "zstd"
@@ -109,12 +109,23 @@ class PipelineConfig:
     @classmethod
     def load(cls, path: str | Path) -> "PipelineConfig":
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        raw_scales = raw.get("scales")
+        if raw_scales is None:
+            raw_scales = [raw.get("scale", 3)]
+        scales = tuple(
+            sorted(
+                {
+                    max(1, int(value))
+                    for value in raw_scales
+                }
+            )
+        )
         return cls(
             boundary_root=_path_from_raw(raw["boundary_root"]),
             output_root=_path_from_raw(raw["output_root"]),
             cache_root=_path_from_raw(raw["cache_root"]),
             sources=tuple(SourceConfig.from_dict(item) for item in raw["sources"]),
-            scale=int(raw.get("scale", 3)),
+            scales=scales or (3,),
             minimum_reference_years=int(raw.get("minimum_reference_years", 20)),
             minimum_spatial_coverage=float(raw.get("minimum_spatial_coverage", 0.8)),
             compression=str(raw.get("compression", "zstd")),
@@ -838,6 +849,7 @@ def run_pipeline(
     *,
     source_keys: set[str] | None = None,
     boundary_keys: set[str] | None = None,
+    scales: set[int] | None = None,
     discover_only: bool = False,
 ) -> list[dict[str, Any]]:
     boundaries = discover_boundaries(config)
@@ -865,6 +877,7 @@ def run_pipeline(
             {"key": layer.key, "title": layer.title, "path": str(layer.path)}
             for layer in boundaries
         ],
+        "scales": list(sorted(scales or set(config.scales))),
     }
     if discover_only:
         return [inventory]
@@ -926,53 +939,60 @@ def run_pipeline(
                 for month, values in zip(months, precipitation)
                 if not np.any(np.isfinite(values))
             ]
-            spi = compute_spi(
-                precipitation,
-                months,
-                source,
-                config.scale,
-                config.minimum_reference_years,
+            selected_scales = tuple(
+                scale for scale in config.scales
+                if scales is None or scale in scales
             )
-            dataset_key = _slug(f"{source.key}_{layer.key}_spi{config.scale}")
-            output_dir = config.output_root / dataset_key
-            output_dir.mkdir(parents=True, exist_ok=True)
-            _write_geoparquet(
-                frame,
-                output_dir / "geoinfo.parquet",
-                config.compression,
-            )
-            _write_parquet(
-                output_dir / "data.parquet",
-                frame["feature_id"].astype(str).to_numpy(),
-                months,
-                spi,
-                config.scale,
-                config.compression,
-            )
-            metadata = {
-                "dataset_key": dataset_key,
-                "title": f"{source.title} SPI-{config.scale} — {layer.title}",
-                "source_key": source.key,
-                "source_title": source.title,
-                "boundary_key": layer.key,
-                "boundary_title": layer.title,
-                "variable": variable,
-                "input_units": units,
-                "spatial_method": "exact polygon-cell intersection; spherical-area weighted mean precipitation",
-                "minimum_spatial_coverage": config.minimum_spatial_coverage,
-                "grid_extent": list(grid.extent),
-                "reference_start": source.reference_start,
-                "reference_end": source.reference_end,
-                "incomplete_months": incomplete_months,
-                "min_month": months[0].strftime("%Y-%m"),
-                "max_month": months[-1].strftime("%Y-%m"),
-                "feature_count": len(frame),
-                "excluded_feature_count": context["source_feature_count"] - len(frame),
-            }
-            (output_dir / "metadata.json").write_text(
-                json.dumps(metadata, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            results.append(metadata)
-            LOGGER.info("Wrote dashboard dataset: %s", output_dir)
+            for scale in selected_scales:
+                spi = compute_spi(
+                    precipitation,
+                    months,
+                    source,
+                    scale,
+                    config.minimum_reference_years,
+                )
+                dataset_key = _slug(f"{source.key}_{layer.key}_spi{scale}")
+                output_dir = config.output_root / dataset_key
+                output_dir.mkdir(parents=True, exist_ok=True)
+                _write_geoparquet(
+                    frame,
+                    output_dir / "geoinfo.parquet",
+                    config.compression,
+                )
+                _write_parquet(
+                    output_dir / "data.parquet",
+                    frame["feature_id"].astype(str).to_numpy(),
+                    months,
+                    spi,
+                    scale,
+                    config.compression,
+                )
+                metadata = {
+                    "dataset_key": dataset_key,
+                    "title": f"{source.title} SPI-{scale} — {layer.title}",
+                    "source_key": source.key,
+                    "source_title": source.title,
+                    "boundary_key": layer.key,
+                    "boundary_title": layer.title,
+                    "scale": scale,
+                    "available_indices": [f"spi{scale}"],
+                    "variable": variable,
+                    "input_units": units,
+                    "spatial_method": "exact polygon-cell intersection; spherical-area weighted mean precipitation",
+                    "minimum_spatial_coverage": config.minimum_spatial_coverage,
+                    "grid_extent": list(grid.extent),
+                    "reference_start": source.reference_start,
+                    "reference_end": source.reference_end,
+                    "incomplete_months": incomplete_months,
+                    "min_month": months[0].strftime("%Y-%m"),
+                    "max_month": months[-1].strftime("%Y-%m"),
+                    "feature_count": len(frame),
+                    "excluded_feature_count": context["source_feature_count"] - len(frame),
+                }
+                (output_dir / "metadata.json").write_text(
+                    json.dumps(metadata, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                results.append(metadata)
+                LOGGER.info("Wrote dashboard dataset: %s", output_dir)
     return results

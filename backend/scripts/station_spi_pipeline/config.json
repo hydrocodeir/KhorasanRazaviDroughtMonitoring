@@ -7,7 +7,7 @@
   "source_title": "Razavi Khorasan Stations",
   "boundary_key": "station",
   "boundary_title": "Stations",
-  "scale": 3,
+  "scales": [3],
   "chunksize": 250000,
   "compression": "zstd",
   "encoding": "utf-8-sig",

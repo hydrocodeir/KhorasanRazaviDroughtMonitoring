@@ -2,7 +2,7 @@
   "boundary_root": "${DATASETS_ROOT}/geoBoundaries",
   "output_root": "data/import",
   "cache_root": "${SPI_CACHE_ROOT:-data/spi_cache}",
-  "scale": 3,
+  "scales": [3],
   "minimum_reference_years": 20,
   "minimum_spatial_coverage": 0.8,
   "sources": [

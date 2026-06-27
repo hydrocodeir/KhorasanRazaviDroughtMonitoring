@@ -210,3 +210,4 @@ __marimo__/
 
 *.parquet
 data/spi_cache/
+data/prediction/
