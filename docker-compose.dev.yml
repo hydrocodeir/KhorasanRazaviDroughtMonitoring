@@ -35,6 +35,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-openai/gpt-oss-120b}
+      NVIDIA_MODELS: ${NVIDIA_MODELS:-openai/gpt-oss-120b,nvidia/nemotron-3-super-120b-a12b,z-ai/glm-5.1,qwen/qwen3-next-80b-a3b-instruct,qwen/qwen3.5-397b-a17b,moonshotai/kimi-k2.6,minimaxai/minimax-m2.7,deepseek-ai/deepseek-v4-flash,google/gemma-4-31b-it}
+      NVIDIA_BASE_URL: ${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
     volumes:
       - ./backend:/app/backend
       - ./data:/app/data
@@ -60,6 +65,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-openai/gpt-oss-120b}
+      NVIDIA_MODELS: ${NVIDIA_MODELS:-openai/gpt-oss-120b,nvidia/nemotron-3-super-120b-a12b,z-ai/glm-5.1,qwen/qwen3-next-80b-a3b-instruct,qwen/qwen3.5-397b-a17b,moonshotai/kimi-k2.6,minimaxai/minimax-m2.7,deepseek-ai/deepseek-v4-flash,google/gemma-4-31b-it}
+      NVIDIA_BASE_URL: ${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
     volumes:
       - ./backend:/app/backend
       - ./data:/app/data

@@ -10,6 +10,17 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.responses import HTMLResponse
 
+from .ai_service import (
+    AIChatRequest,
+    AIConfigurationError,
+    AIForbiddenError,
+    AIProviderError,
+    AIRateLimitError,
+    AITimeoutError,
+    AIValidationError,
+    get_ai_options,
+    get_ai_service,
+)
 from .cache import clear_cache, get_or_set_cache
 from .datasets_store import (
     fetch_feature_name,
@@ -56,6 +67,17 @@ DATASET_UNAVAILABLE_DETAIL = (
 
 def api_error(status_code: int, code: str, message: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"code": code, "message": message})
+
+
+def ai_error_response(message: str, provider: str | None = None, status_code: int = 500) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "error",
+            "message": message,
+            "provider": provider,
+        },
+    )
 
 
 # ---------- Shared helpers ----------
@@ -133,6 +155,142 @@ def prediction_overview_payload(level: str, index: str, month: str, method: str 
         "max": max(values),
         "mean": sum(values) / len(values),
     }
+
+
+def _compact_series_payload(series_payload: dict[str, Any], max_points: int = 600) -> dict[str, Any]:
+    rows = series_payload.get("data") if isinstance(series_payload, dict) else []
+    data = rows if isinstance(rows, list) else []
+    values = [
+        float(item["value"])
+        for item in data
+        if isinstance(item, dict) and item.get("value") is not None
+    ]
+    compact_data = data[-max_points:] if len(data) > max_points else data
+    return {
+        "feature": series_payload.get("feature"),
+        "min_month": series_payload.get("min_month"),
+        "max_month": series_payload.get("max_month"),
+        "point_count": len(data),
+        "included_point_count": len(compact_data),
+        "data": compact_data,
+        "value_summary": {
+            "count": len(values),
+            "min": min(values) if values else None,
+            "max": max(values) if values else None,
+            "mean": (sum(values) / len(values)) if values else None,
+            "latest": values[-1] if values else None,
+        },
+    }
+
+
+def _selected_region_kpi_context(level: str, index: str, region_id: str, month: str | None) -> dict[str, Any]:
+    requested = parse_month(month)
+    effective_month = requested
+    note = None
+    if requested is not None:
+        effective_month, _effective_value, note = find_effective_month_for_value(
+            dataset_key=level,
+            feature_id=region_id,
+            index=index,
+            requested=requested,
+        )
+
+    values = fetch_values_up_to(
+        dataset_key=level,
+        feature_id=region_id,
+        index=index,
+        end_date=effective_month,
+    )
+    if not values:
+        return {
+            "feature": fetch_feature_name(level, region_id),
+            "error": "No series found for this selected feature.",
+        }
+
+    trend = fetch_precomputed_trend(dataset_key=level, index=index, feature_id=region_id)
+    if trend is None:
+        full_values = fetch_values_up_to(
+            dataset_key=level,
+            feature_id=region_id,
+            index=index,
+            end_date=None,
+        )
+        trend = mann_kendall_and_sen(full_values)
+
+    latest_val = values[-1]
+    return {
+        "feature": fetch_feature_name(level, region_id),
+        "requested_month": requested.strftime("%Y-%m") if requested else None,
+        "effective_month": effective_month.strftime("%Y-%m") if effective_month else None,
+        "note": note,
+        "min": min(values),
+        "max": max(values),
+        "mean": sum(values) / len(values),
+        "latest": latest_val,
+        "severity": drought_class(latest_val) if index.lower().startswith(("spi", "spei")) else "N/A",
+        "trend": trend,
+    }
+
+
+def build_ai_chat_context(request: AIChatRequest) -> dict[str, Any]:
+    level = request.level
+    index = request.index
+    month = request.date
+
+    meta = fetch_meta(level)
+    overview_payload = prediction_overview_payload(level, index, month) or fetch_overview_counts(
+        dataset_key=level,
+        index=index,
+        yyyymm=month,
+    )
+    context: dict[str, Any] = {
+        "dashboard": "Drought Monitoring Dashboard",
+        "selected_state": {
+            "level": level,
+            "index": index,
+            "date": month,
+            "region_id": request.region_id,
+        },
+        "dataset": {
+            "key": meta.get("dataset_key"),
+            "title": meta.get("title"),
+            "geom_type": meta.get("geom_type"),
+            "feature_count": meta.get("feature_count"),
+            "min_month": meta.get("min_month"),
+            "max_month": meta.get("max_month"),
+            "metadata": meta.get("metadata"),
+        },
+        "map_overview": overview_payload,
+    }
+
+    if request.region_id:
+        region_id = request.region_id
+        context["selected_feature"] = {
+            "id": region_id,
+            "name": fetch_feature_name(level, region_id),
+            "kpi": _selected_region_kpi_context(level, index, region_id, month),
+            "timeseries": _compact_series_payload(
+                fetch_timeseries_full(dataset_key=level, feature_id=region_id, index=index)
+            ),
+        }
+        try:
+            context["selected_feature"]["prediction_forecast"] = fetch_prediction_forecast(
+                dataset_key=level,
+                feature_id=region_id,
+                index=index,
+                method=None,
+            )
+        except Exception:
+            context["selected_feature"]["prediction_forecast"] = {"available": False}
+    try:
+        context["prediction_summary"] = fetch_prediction_summary(
+            dataset_key=level,
+            index=index,
+            method=None,
+        )
+    except Exception:
+        context["prediction_summary"] = {"available": False}
+    return context
 
 
 def enrich_map_features_with_drought_and_trend(
@@ -353,6 +511,60 @@ async def prediction_forecast(region_id: str, level: str = "station", index: str
         raise api_error(400, "invalid_request", str(exc)) from exc
     except Exception as exc:
         raise dataset_unavailable_http_exc() from exc
+
+
+@app.get("/api/ai/options")
+@app.get("/ai/options")
+async def ai_options():
+    return get_ai_options()
+
+
+@app.post("/api/ai/chat")
+@app.post("/ai/chat")
+async def ai_chat(payload: AIChatRequest):
+    if payload.provider != "nvidia":
+        return ai_error_response(
+            "Only NVIDIA is enabled for this dashboard.",
+            provider=payload.provider,
+            status_code=400,
+        )
+
+    try:
+        context = await run_in_threadpool(build_ai_chat_context, payload)
+    except ValueError as exc:
+        return ai_error_response(str(exc), provider=payload.provider, status_code=400)
+    except Exception:
+        logger.exception("AI chat context build failed")
+        return ai_error_response(
+            "Could not build dashboard context for AI chat.",
+            provider=payload.provider,
+            status_code=500,
+        )
+
+    service = get_ai_service()
+    try:
+        result = await run_in_threadpool(service.chat, payload, context)
+    except AIConfigurationError as exc:
+        return ai_error_response(exc.message, exc.provider, 500)
+    except AIValidationError as exc:
+        return ai_error_response(exc.message, exc.provider, 400)
+    except AIForbiddenError as exc:
+        return ai_error_response(exc.message, exc.provider, 403)
+    except AIRateLimitError as exc:
+        return ai_error_response(exc.message, exc.provider, 429)
+    except AITimeoutError as exc:
+        return ai_error_response(exc.message, exc.provider, 504)
+    except AIProviderError as exc:
+        return ai_error_response(exc.message, exc.provider, 502)
+    except Exception:
+        logger.exception("AI chat failed unexpectedly")
+        return ai_error_response(
+            "AI chat failed unexpectedly.",
+            provider=payload.provider,
+            status_code=500,
+        )
+
+    return JSONResponse(content=result.model_dump())
 
 
 @app.get("/kpi")

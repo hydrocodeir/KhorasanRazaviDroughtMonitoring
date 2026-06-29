@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("../fonts/Vazirmatn-FD-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   /* Neutral enterprise palette */
   --bg: #f5f7fb;
@@ -38,7 +46,17 @@ body {
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
-  font-family: "Segoe UI", Roboto, Arial, system-ui, -apple-system, sans-serif;
+  font-family: "Vazirmatn", "Segoe UI", Tahoma, Arial, system-ui, -apple-system, sans-serif;
+  direction: rtl;
+  text-align: right;
+}
+
+.ltr-block,
+code,
+pre {
+  direction: ltr;
+  text-align: left;
+  unicode-bidi: plaintext;
 }
 
 .skip-link {
@@ -87,7 +105,7 @@ body {
 
 .brand__title {
   font-weight: 800;
-  letter-spacing: -0.2px;
+  letter-spacing: 0;
   font-size: 1.05rem;
   line-height: 1.15;
 }
@@ -652,15 +670,17 @@ input[type="range"]:disabled {
 .polygon-tooltip {
   min-width: 180px;
   display: grid;
-  gap: 6px;
+  gap: 7px;
   padding: 10px 12px;
-  font-family: inherit;
+  direction: rtl;
+  text-align: right;
+  font-family: "Vazirmatn", Tahoma, Arial, sans-serif;
 }
 
 .polygon-tooltip__title {
   color: var(--text);
-  font-size: 0.92rem;
-  font-weight: 900;
+  font-size: 0.88rem;
+  font-weight: 800;
   margin-bottom: 2px;
 }
 
@@ -668,15 +688,44 @@ input[type="range"]:disabled {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
   color: var(--muted);
   font-size: 0.76rem;
+  line-height: 1.7;
 }
 
 .polygon-tooltip__row strong {
   color: var(--text);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
+  font-weight: 700;
   text-align: right;
+  max-width: 150px;
+  overflow-wrap: anywhere;
+}
+
+.station-tooltip-shell {
+  border-radius: 10px !important;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16) !important;
+}
+
+.station-tooltip-shell .polygon-tooltip {
+  min-width: 150px;
+  max-width: 230px;
+  padding: 8px 10px;
+  gap: 5px;
+}
+
+.station-tooltip-shell .polygon-tooltip__title {
+  font-size: 0.84rem;
+}
+
+.station-tooltip-shell .polygon-tooltip__row {
+  font-size: 0.72rem;
+}
+
+.station-tooltip-shell .polygon-tooltip__row strong {
+  font-size: 0.76rem;
+  max-width: 128px;
 }
 
 .map-hover {
@@ -1417,7 +1466,7 @@ input[type="range"]:disabled {
 /* ---------- Leaflet: enterprise styling ---------- */
 
 .leaflet-container {
-  font: 13px/1.2 "Segoe UI", Roboto, Arial, system-ui, sans-serif;
+  font: 13px/1.45 "Vazirmatn", Tahoma, Arial, system-ui, sans-serif;
   background: #f1f5f9;
 }
 
@@ -1439,6 +1488,7 @@ input[type="range"]:disabled {
   border-radius: 10px;
   box-shadow: var(--shadow-sm);
   padding: 8px 10px;
+  font-family: "Vazirmatn", Tahoma, Arial, sans-serif;
 }
 
 .leaflet-tooltip strong {
@@ -2039,6 +2089,266 @@ input[type="range"]:disabled {
 
 .xx-small-font {
   font-size: xx-small !important;
+}
+
+.drought-chat-widget {
+  position: fixed;
+  inset-inline-end: 18px;
+  inset-block-end: 18px;
+  z-index: 1700;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  max-width: calc(100vw - 24px);
+}
+
+.drought-chat-panel {
+  width: min(420px, calc(100vw - 24px));
+  height: min(620px, calc(100dvh - 112px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid rgba(37, 99, 235, 0.24);
+  border-radius: 14px;
+  box-shadow: 0 24px 72px rgba(15, 23, 42, 0.22);
+}
+
+.drought-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  color: #fff;
+  background: linear-gradient(135deg, #0f766e, #2563eb);
+}
+
+.drought-chat-header__text {
+  min-width: 0;
+}
+
+.drought-chat-kicker {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  opacity: 0.84;
+  text-transform: uppercase;
+}
+
+.drought-chat-header h2 {
+  margin: 2px 0 0;
+  overflow: hidden;
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drought-chat-header__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.drought-chat-header__actions button {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+  min-height: 30px;
+  padding: 7px 9px;
+}
+
+#droughtChatClose {
+  min-width: 30px;
+  padding-inline: 0;
+  font-size: 1.15rem;
+}
+
+.drought-chat-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  gap: 8px 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.drought-chat-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.drought-chat-settings select {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-size: 0.78rem;
+  padding: 5px 8px;
+}
+
+.drought-chat-model-hint {
+  grid-column: 1 / -1;
+  min-height: 16px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.drought-chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.drought-chat-message {
+  width: fit-content;
+  max-width: 86%;
+  margin-bottom: 10px;
+  padding: 9px 11px;
+  border-radius: 12px;
+  font-size: 0.86rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.drought-chat-message.user {
+  margin-inline-start: auto;
+  background: #2563eb;
+  color: #fff;
+  border-bottom-inline-end-radius: 4px;
+}
+
+.drought-chat-message.assistant,
+.drought-chat-message.pending {
+  background: #eef6f5;
+  color: #102a43;
+  border: 1px solid #cfe8e5;
+  border-bottom-inline-start-radius: 4px;
+}
+
+.drought-chat-message.error {
+  background: #fff1f2;
+  color: #9f1239;
+  border: 1px solid #fecdd3;
+}
+
+.drought-chat-message-meta {
+  margin-top: 5px;
+  color: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  opacity: 0.68;
+}
+
+.drought-chat-status {
+  padding: 7px 12px;
+  color: #9f1239;
+  border-top: 1px solid #fecdd3;
+  background: #fff1f2;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.drought-chat-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+  background: #fff;
+}
+
+.drought-chat-form textarea {
+  min-height: 42px;
+  max-height: 120px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  padding: 8px 10px;
+}
+
+.drought-chat-form button,
+.drought-chat-toggle {
+  border: 0;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 800;
+}
+
+.drought-chat-form button {
+  min-width: 74px;
+  border-radius: 10px;
+  padding: 0 14px;
+}
+
+.drought-chat-form button:disabled,
+.drought-chat-settings select:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.drought-chat-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  padding: 9px 14px 9px 10px;
+}
+
+.drought-chat-toggle__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+@media (max-width: 640px) {
+  .drought-chat-widget {
+    inset-inline: 10px;
+    inset-block-end: 10px;
+    align-items: stretch;
+  }
+
+  .drought-chat-panel {
+    width: 100%;
+    height: min(560px, calc(100dvh - var(--app-header-h) - 74px));
+  }
+
+  .drought-chat-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .drought-chat-toggle {
+    justify-content: center;
+  }
 }
 
 

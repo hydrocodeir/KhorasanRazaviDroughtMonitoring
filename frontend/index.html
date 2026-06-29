@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en-US" dir="ltr">
+<html lang="fa-IR" dir="rtl">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Drought Monitoring Dashboard</title>
+  <title>داشبورد پایش خشکسالی</title>
   <link rel="icon" type="image/png" href="./static/HydroDrought.png" />
 
-  <link rel="stylesheet" href="./static/css/bootstrap.min.css">
+  <link rel="stylesheet" href="./static/css/bootstrap.rtl.min.css">
   <link rel="stylesheet" href="./static/css/bootstrap-icons.min.css">
   <link rel="stylesheet" href="./static/css/leaflet.css">
   <link rel="stylesheet" href="./static/css/style.css" />
@@ -14,7 +14,7 @@
 </head>
 
 <body>
-  <a class="skip-link" href="#mainContent">Skip to main content</a>
+  <a class="skip-link" href="#mainContent">رفتن به محتوای اصلی</a>
   <div class="app-shell" id="appShell">
     <header class="app-header" role="banner">
       <div class="header-logo">
@@ -22,64 +22,64 @@
       </div>
 
       <div class="brand">
-        <div class="brand__title">Drought Monitoring Dashboard</div>
+        <div class="brand__title">داشبورد پایش خشکسالی</div>
       </div>
 
       <div class="header-actions">
-        <button id="toggleSidebar" class="btn btn-sm btn-outline-secondary d-lg-none" type="button" title="Show filters" aria-controls="sidebar" aria-expanded="false">
-          Filters
+        <button id="toggleSidebar" class="btn btn-sm btn-outline-secondary d-lg-none" type="button" title="نمایش فیلترها" aria-controls="sidebar" aria-expanded="false">
+          فیلترها
         </button>
-        <button id="togglePanel" class="btn btn-sm btn-outline-secondary d-lg-none" type="button" title="Show analytics panel" aria-controls="insightPanel" aria-expanded="false">
-          Analysis
+        <button id="togglePanel" class="btn btn-sm btn-outline-secondary d-lg-none" type="button" title="نمایش پنل تحلیل" aria-controls="insightPanel" aria-expanded="false">
+          تحلیل
         </button>
-        <button id="openAbout" class="btn btn-sm btn-outline-secondary" type="button" title="About this dashboard">
-          About
+        <button id="openAbout" class="btn btn-sm btn-outline-secondary" type="button" title="درباره داشبورد">
+          درباره
         </button>
-        <button id="openContact" class="btn btn-sm btn-outline-secondary" type="button" title="Contact HydroCode">
-          Contact
+        <button id="openContact" class="btn btn-sm btn-outline-secondary" type="button" title="تماس با HydroCode">
+          تماس
         </button>
-        <button id="reloadTop" class="btn btn-sm btn-primary" type="button" title="Refresh map and data">
-          Refresh
+        <button id="reloadTop" class="btn btn-sm btn-primary" type="button" title="به‌روزرسانی نقشه و داده‌ها">
+          به‌روزرسانی
         </button>
       </div>
     </header>
 
-    <div class="mobile-nav d-lg-none" id="mobileNav" aria-label="Mobile workspace switcher">
-      <button id="mobileMapTab" class="btn btn-sm btn-primary" type="button">Map</button>
-      <button id="mobileFiltersTab" class="btn btn-sm btn-outline-primary" type="button">Filters</button>
-      <button id="mobileAnalysisTab" class="btn btn-sm btn-outline-primary" type="button">Analysis</button>
+    <div class="mobile-nav d-lg-none" id="mobileNav" aria-label="جابه‌جایی نمای موبایل">
+      <button id="mobileMapTab" class="btn btn-sm btn-primary" type="button">نقشه</button>
+      <button id="mobileFiltersTab" class="btn btn-sm btn-outline-primary" type="button">فیلترها</button>
+      <button id="mobileAnalysisTab" class="btn btn-sm btn-outline-primary" type="button">تحلیل</button>
     </div>
 
     <div class="app-body" id="mainContent" role="main">
-      <aside id="sidebar" class="sidebar" aria-label="Filters">
+      <aside id="sidebar" class="sidebar" aria-label="فیلترها">
         <div class="stack">
           <section class="ui-card">
             <div class="ui-card__header">
-              <div class="ui-card__title"><i class="bi bi-funnel"></i><span>Filters</span></div>
-              <button id="closeSidebar" class="icon-btn d-lg-none" type="button" title="Back to map">✕</button>
+              <div class="ui-card__title"><i class="bi bi-funnel"></i><span>فیلترها</span></div>
+              <button id="closeSidebar" class="icon-btn d-lg-none" type="button" title="بازگشت به نقشه">✕</button>
             </div>
             <div class="ui-card__body">
-              <label class="form-label" for="search">Search region or station</label>
+              <label class="form-label" for="search">جستجوی منطقه یا ایستگاه</label>
               <div class="search-box">
                 <div class="search-row">
-                  <input id="search" placeholder="Example: Station name or ID" class="form-control form-control-sm" autocomplete="off" />
-                  <button id="clearSearch" class="btn btn-sm" type="button" title="Clear search">
+                  <input id="search" placeholder="نام یا شناسه ایستگاه/منطقه" class="form-control form-control-sm" autocomplete="off" />
+                  <button id="clearSearch" class="btn btn-sm" type="button" title="پاک‌کردن جستجو">
                     <i class="bi bi-trash3 text-danger"></i>
                   </button>
                 </div>
-                <div id="searchSuggestions" class="search-suggestions d-none" role="listbox" aria-label="Search suggestions"></div>
+                <div id="searchSuggestions" class="search-suggestions d-none" role="listbox" aria-label="پیشنهادهای جستجو"></div>
               </div>
-              <div class="form-hint">Find features by name, country, province, or ID. Non-matching features are hidden from the current map view.</div>
+              <div class="form-hint">عارضه‌ها را با نام، استان یا شناسه پیدا کنید. موارد نامنطبق از نمای فعلی نقشه پنهان می‌شوند.</div>
 
               <div id="fallbackFilterWrap" class="form-check form-switch fallback-filter d-none">
                 <input id="fallbackOnlyToggle" class="form-check-input" type="checkbox" role="switch" />
-                <label class="form-check-label" for="fallbackOnlyToggle">Show fallback-reference stations only</label>
+                <label class="form-check-label" for="fallbackOnlyToggle">فقط ایستگاه‌های با دوره مرجع جایگزین</label>
               </div>
               <div id="configuredFilterWrap" class="form-check form-switch fallback-filter d-none">
                 <input id="configuredOnlyToggle" class="form-check-input" type="checkbox" role="switch" />
-                <label class="form-check-label" for="configuredOnlyToggle">Show configured-baseline stations only</label>
+                <label class="form-check-label" for="configuredOnlyToggle">فقط ایستگاه‌های با دوره مبنای تنظیم‌شده</label>
               </div>
-              <div id="fallbackFilterHint" class="form-hint d-none">Filter the map to stations that could not use the configured 1991–2020 calibration period.</div>
+              <div id="fallbackFilterHint" class="form-hint d-none">نقشه را به ایستگاه‌هایی محدود می‌کند که نتوانسته‌اند از دوره کالیبراسیون تنظیم‌شده استفاده کنند.</div>
             </div>
           </section>
 
@@ -87,28 +87,28 @@
             <div class="ui-card__header">
               <div class="ui-card__title">
                 <i class="bi bi-activity"></i>
-                <span>Indices</span>
+                <span>شاخص‌ها</span>
               </div>
             </div>
             <div class="ui-card__body">
-              <label class="form-label" for="index">Select indicator</label>
+              <label class="form-label" for="index">انتخاب شاخص</label>
               <select id="index" class="form-select form-select-sm"></select>
-              <div class="form-hint">Choose which drought indicator from the selected dataset is shown on the map and charts.</div>
+              <div class="form-hint">شاخص خشکسالی یا اقلیمی مورد نمایش روی نقشه و نمودارها را انتخاب کنید.</div>
             </div>
           </section>
 
           <section class="ui-card">
             <div class="ui-card__header">
-              <div class="ui-card__title"><i class="bi bi-globe2"></i><span>Data layer</span></div>
+              <div class="ui-card__title"><i class="bi bi-globe2"></i><span>لایه داده</span></div>
             </div>
             <div class="ui-card__body">
-              <label class="form-label" for="source">Select source</label>
+              <label class="form-label" for="source">انتخاب منبع</label>
               <select id="source" class="form-select form-select-sm"></select>
-              <div class="form-hint">Choose the precipitation source first. TerraClimate can be the default source when it is available.</div>
+              <div class="form-hint">ابتدا منبع داده را انتخاب کنید. در صورت وجود، TerraClimate می‌تواند منبع پیش‌فرض باشد.</div>
 
-              <label class="form-label mt-3" for="boundary">Select boundary</label>
+              <label class="form-label mt-3" for="boundary">انتخاب محدوده</label>
               <select id="boundary" class="form-select form-select-sm"></select>
-              <div class="form-hint">Choose which polygon layer to view, such as county, basin, watershed, or administrative boundaries.</div>
+              <div class="form-hint">لایه مکانی مورد نظر مانند شهرستان، حوضه یا محدوده‌های مدیریتی را انتخاب کنید.</div>
 
               <select id="level" class="form-select form-select-sm d-none" hidden aria-hidden="true"></select>
             </div>
@@ -116,38 +116,38 @@
         </div>
       </aside>
 
-      <main class="map-col" aria-label="Map and timeline">
+      <main class="map-col" aria-label="نقشه و نوار زمان">
         <div class="map-col__stack">
           <section class="ui-card map-card">
             <div class="ui-card__header map-card__header">
               <div>
-                <div class="ui-card__title"><i class="bi bi-map"></i><span>Interactive map</span></div>
+                <div class="ui-card__title"><i class="bi bi-map"></i><span>نقشه تعاملی</span></div>
                 <div id="mapSubtitle" class="ui-card__hint">—</div>
               </div>
               <div class="map-toolbar">
                 <div class="toolbar-group">
                   <select id="basemap" class="form-select form-select-sm">
-                    <option value="carto" selected>Neutral map</option>
-                    <option value="osm">OSM map</option>
-                    <option value="dark">Dark map</option>
+                    <option value="carto" selected>نقشه خنثی</option>
+                    <option value="osm">نقشه OSM</option>
+                    <option value="dark">نقشه تیره</option>
                   </select>
                 </div>
                 <div class="form-check form-switch toolbar-toggle">
-                  <input class="form-check-input" type="checkbox" role="switch" id="markerModeToggle" aria-label="Show all station markers" />
-                  <label class="form-check-label" for="markerModeToggle">Show all markers</label>
+                  <input class="form-check-input" type="checkbox" role="switch" id="markerModeToggle" aria-label="نمایش همه نشانگرهای ایستگاه" />
+                  <label class="form-check-label" for="markerModeToggle">همه نشانگرها</label>
                 </div>
-                <button id="resetView" class="btn btn-sm btn-light" type="button" title="Reset map view">
-                  Reset map
+                <button id="resetView" class="btn btn-sm btn-light" type="button" title="بازنشانی نمای نقشه">
+                  بازنشانی نقشه
                 </button>
               </div>
             </div>
 
             <div class="ui-card__body map-card__body">
-              <div id="map" aria-label="Map" role="application" aria-busy="false"></div>
+              <div id="map" aria-label="نقشه" role="application" aria-busy="false"></div>
 
               <div id="mapLoading" class="map-loading" aria-live="polite">
                 <div class="map-loading__inner">
-                  <div class="map-loading__title">Loading map data</div>
+                  <div class="map-loading__title">در حال بارگذاری داده‌های نقشه</div>
                   <div class="skeleton skeleton--line"></div>
                   <div class="skeleton skeleton--line skeleton--short"></div>
                   <div class="skeleton skeleton--chips">
@@ -162,19 +162,19 @@
                 <div class="map-hover__title text-center" id="hoverName">—</div>
                 <div class="map-hover__grid">
                   <div class="map-hover__item">
-                    <span>Index</span>
+                    <span>شاخص</span>
                     <div class="text-center"><strong id="hoverIndex">—</strong></div>
                   </div>
                   <div class="map-hover__item">
-                    <span>Value</span>
+                    <span>مقدار</span>
                     <div class="text-center"><strong id="hoverValue">—</strong></div>
                   </div>
                   <div class="map-hover__item">
-                    <span>Severity</span>
+                    <span>شدت</span>
                     <div class="text-center"><strong id="hoverSeverity">—</strong></div>
                   </div>
                   <div class="map-hover__item">
-                    <span>Trend</span>
+                    <span>روند</span>
                     <div class="text-center"><strong id="hoverTrend">—</strong></div>
                   </div>
                 </div>
@@ -182,24 +182,24 @@
             </div>
           </section>
 
-          <section class="ui-card timeline-card" aria-label="Timeline controls">
+          <section class="ui-card timeline-card" aria-label="کنترل زمان">
             <div class="ui-card__body">
               <div class="timeline-row">
                 <div class="timeline-left">
-                  <button id="toStart" class="btn btn-sm btn-light" type="button" title="Move to start">Start</button>
-                  <button id="prevMonth" class="btn btn-sm btn-light" type="button" title="Previous month">Prev</button>
-                  <input id="date" type="text" lang="en-US" inputmode="numeric" pattern="\d{4}-\d{2}" placeholder="YYYY-MM" autocomplete="off" spellcheck="false" class="form-control form-control-sm timeline-date" value="2020-01" />
-                  <button id="nextMonth" class="btn btn-sm btn-light" type="button" title="Next month">Next</button>
-                  <button id="toEnd" class="btn btn-sm btn-light" type="button" title="Jump to latest month">Latest</button>
+                  <button id="toEnd" class="btn btn-sm btn-light" type="button" title="رفتن به آخرین ماه">آخرین</button>
+                  <button id="nextMonth" class="btn btn-sm btn-light" type="button" title="ماه بعد">بعدی</button>
+                  <input id="date" type="text" lang="fa-IR" inputmode="numeric" pattern="[0-9۰-۹]{4}[-/][0-9۰-۹]{2}" placeholder="۱۴۰۳/۰۱" autocomplete="off" spellcheck="false" class="form-control form-control-sm timeline-date" value="۲۰۲۰/۰۱" />
+                  <button id="prevMonth" class="btn btn-sm btn-light" type="button" title="ماه قبل">قبلی</button>
+                  <button id="toStart" class="btn btn-sm btn-light" type="button" title="رفتن به ابتدا">ابتدا</button>
                 </div>
                 <div class="timeline-right d-flex align-items-center gap-2">
-                  <span class="small text-muted">Global map time</span>
-                  <button id="syncToPanel" class="btn btn-sm btn-outline-primary" type="button" title="Sync map date to panel date">Sync panel</button>
+                  <span class="small text-muted">زمان نقشه</span>
+                  <button id="syncToPanel" class="btn btn-sm btn-outline-primary" type="button" title="همگام‌سازی تاریخ نقشه با پنل">همگام با پنل</button>
                 </div>
               </div>
 
               <div class="global-slider">
-                <input id="globalSlider" type="range" min="0" max="0" step="1" value="0" aria-label="Global timeline slider" />
+                <input id="globalSlider" type="range" min="0" max="0" step="1" value="0" aria-label="نوار زمان نقشه" />
                 <div class="global-slider__labels">
                   <span id="globalMinLabel" class="text-muted small">—</span>
                   <span id="globalMaxLabel" class="text-muted small">—</span>
@@ -210,7 +210,7 @@
         </div>
       </main>
 
-      <aside id="insightPanel" class="insight" aria-hidden="false" aria-label="Analysis panel" aria-busy="false">
+      <aside id="insightPanel" class="insight" aria-hidden="false" aria-label="پنل تحلیل" aria-busy="false">
         <div class="stack">
           <section class="ui-card">
             <div class="ui-card__header">
@@ -225,7 +225,7 @@
                 <div class="d-flex align-items-center"><i class="bi bi-calendar-month"></i><span class="ui-card__hint px-3" id="panelSubtitle"></span></div>
                 <div id="panelAttributes" class="feature-attrs" aria-live="polite"></div>
               </div>
-              <button id="closePanel" class="icon-btn d-lg-none" type="button" title="Close panel">✕</button>
+              <button id="closePanel" class="icon-btn d-lg-none" type="button" title="بستن پنل">✕</button>
             </div>
 
             <div class="ui-card__body">
@@ -233,83 +233,83 @@
                 <div class="value-box__row">
                   <span class="metric-label-group">
                     <span id="mainMetricLabel"></span>
-                    <span id="predictedBadge" class="predicted-badge d-none">Predicted</span>
-                    <button id="indexHelpBtn" class="help-icon" type="button" title="Index guide"><i class="bi bi-exclamation-circle text-danger"></i></button>
+                    <span id="predictedBadge" class="predicted-badge d-none">پیش‌بینی</span>
+                    <button id="indexHelpBtn" class="help-icon" type="button" title="راهنمای شاخص"><i class="bi bi-exclamation-circle text-danger"></i></button>
                   </span>
                   <span id="severityBadge" class="severity-badge">-</span>
                 </div>
-                <div class="main-value" id="mainMetricValue">Click a region to start</div>
+                <div class="main-value" id="mainMetricValue">برای شروع یک منطقه را انتخاب کنید</div>
               </section>
 
               <div id="indexHelpPanel" class="help-panel d-none tiny-font">
                 <button class="help-panel__close" data-close-help="indexHelpPanel" type="button">✕</button>
-                <h6>SPI index</h6>
-                <p>SPI is a standardized index used to monitor meteorological drought.</p>
-                <p><strong>SPI:</strong> calculated from precipitation.</p>
-                <p><strong>SPI method:</strong> computed with the Standardized Drought Analysis Toolbox (SDAT) framework.</p>
-                <h6>Data summary</h6>
-                <p id="indexDatasetSummary">Select a dataset to view its source, boundary layer, and calibration period.</p>
-                <small>Indices are computed independently for each station or polygon using the configured historical reference period.</small>
-                <h6>References</h6>
-                <p>Inspired by <a href="https://drought.eng.uci.edu/" target="_blank" rel="noopener noreferrer">drought.eng.uci.edu</a>.</p>
+                <h6>شاخص SPI</h6>
+                <p>SPI یک شاخص استاندارد برای پایش خشکسالی هواشناسی است.</p>
+                <p><strong>SPI:</strong> بر پایه بارش محاسبه می‌شود.</p>
+                <p><strong>روش محاسبه:</strong> بر اساس چارچوب SDAT انجام شده است.</p>
+                <h6>خلاصه داده</h6>
+                <p id="indexDatasetSummary">برای مشاهده منبع، محدوده و دوره کالیبراسیون، یک دیتاست انتخاب کنید.</p>
+                <small>شاخص‌ها برای هر ایستگاه یا پلیگون به صورت مستقل و بر اساس دوره مرجع تاریخی محاسبه می‌شوند.</small>
+                <h6>منابع</h6>
+                <p>الهام‌گرفته از <a href="https://drought.eng.uci.edu/" target="_blank" rel="noopener noreferrer">drought.eng.uci.edu</a>.</p>
                 <p>Hao Z., AghaKouchak A., Nakhjiri N., Farahmand A. (2014). Global Integrated Drought Monitoring and Prediction System. <em>Scientific Data</em>, 1:140001. doi:10.1038/sdata.2014.1</p>
                 <p>Farahmand A., AghaKouchak A. (2015). A Generalized Framework for Deriving Nonparametric Standardized Drought Indicators. <em>Advances in Water Resources</em>, 76, 140-145. doi:10.1016/j.advwatres.2014.11.012</p>
-                <h6>What is SPI-n?</h6>
+                <h6>SPI-n چیست؟</h6>
                 <ul>
-                  <li>Uses a rolling n-month aggregation window, where n can be 1, 3, 6, 12, or another configured scale.</li>
-                  <li>Shorter scales are more sensitive to short-term and seasonal variability.</li>
-                  <li>Longer scales are more useful for accumulated drought, hydrological stress, and persistent deficits.</li>
+                  <li>از پنجره تجمعی n ماهه استفاده می‌کند؛ مانند ۱، ۳، ۶، ۱۲ یا مقیاس‌های دیگر.</li>
+                  <li>مقیاس‌های کوتاه‌تر به تغییرات کوتاه‌مدت و فصلی حساس‌ترند.</li>
+                  <li>مقیاس‌های بلندتر برای خشکسالی تجمعی، تنش هیدرولوژیک و کمبودهای پایدار مناسب‌ترند.</li>
                 </ul>
-                <h6>Drought severity classes</h6>
-                <p><strong>SPI ≥ -0.5:</strong> Normal/Wet conditions</p>
-                <p><strong>-0.8 &lt; SPI &lt; -0.5:</strong> D0 - Abnormally Dry</p>
-                <p><strong>-1.3 &lt; SPI ≤ -0.8:</strong> D1 - Moderate Drought</p>
-                <p><strong>-1.6 &lt; SPI ≤ -1.3:</strong> D2 - Severe Drought</p>
-                <p><strong>-2.0 &lt; SPI ≤ -1.6:</strong> D3 - Extreme Drought</p>
-                <p><strong>SPI ≤ -2.0:</strong> D4 - Exceptional Drought</p>
-                <h6>Important note</h6>
-                <p>SPI values are computed from each station's full statistical period and are not recalculated based on user-selected ranges.</p>
+                <h6>کلاس‌های شدت خشکسالی</h6>
+                <p><strong>SPI ≥ -۰/۵:</strong> شرایط نرمال یا مرطوب</p>
+                <p><strong>-۰/۸ &lt; SPI &lt; -۰/۵:</strong> D0 - خشکی غیرعادی</p>
+                <p><strong>-۱/۳ &lt; SPI ≤ -۰/۸:</strong> D1 - خشکسالی متوسط</p>
+                <p><strong>-۱/۶ &lt; SPI ≤ -۱/۳:</strong> D2 - خشکسالی شدید</p>
+                <p><strong>-۲/۰ &lt; SPI ≤ -۱/۶:</strong> D3 - خشکسالی بسیار شدید</p>
+                <p><strong>SPI ≤ -۲/۰:</strong> D4 - خشکسالی استثنایی</p>
+                <h6>نکته مهم</h6>
+                <p>مقادیر SPI از دوره آماری کامل هر ایستگاه محاسبه شده‌اند و با بازه انتخابی کاربر دوباره محاسبه نمی‌شوند.</p>
               </div>
 
-              <div class="chart-section" aria-label="Time series">
+              <div class="chart-section" aria-label="سری زمانی">
                 <div class="chart-section__head">
-                  <div class="chart-section__title"><i class="bi bi-graph-up"></i><span>Time series</span></div>
+                  <div class="chart-section__title"><i class="bi bi-graph-up"></i><span>سری زمانی</span></div>
                 </div>
-                <div class="station-slider mb-2" aria-label="Region time control">
+                <div class="station-slider mb-2" aria-label="کنترل زمان منطقه">
                   <div class="station-slider__row">
-                    <span class="text-muted small">Panel region time</span>
+                    <span class="text-muted small">زمان منطقه در پنل</span>
                     <span id="stationRangeLabel" class="text-muted small">—</span>
                   </div>
                   <input id="stationSlider" type="range" min="0" max="0" step="1" value="0" disabled />
                   <div class="station-slider__row">
                     <span id="stationMonthLabel" class="small">—</span>
-                    <button id="syncToMap" class="btn btn-sm btn-primary" type="button" title="Sync panel date to map date">Sync map</button>
+                    <button id="syncToMap" class="btn btn-sm btn-primary" type="button" title="همگام‌سازی تاریخ پنل با نقشه">همگام با نقشه</button>
                   </div>
                   <div class="d-flex align-items-center justify-content-between gap-2 mt-2">
-                    <span class="text-muted small">Zoom last 5 years</span>
+                    <span class="text-muted small">نمای ۵ سال آخر</span>
                     <div class="form-check form-switch m-0">
                       <input id="chartZoomToggle" class="form-check-input" type="checkbox" role="switch" />
                     </div>
                   </div>
                 </div>
-                <div class="chart-wrap" aria-label="Time series chart"><div id="tsChart"></div></div>
+                <div class="chart-wrap" aria-label="نمودار سری زمانی"><div id="tsChart"></div></div>
               </div>
 
-              <section id="predictionSection" class="prediction-section d-none" aria-label="Prediction">
+              <section id="predictionSection" class="prediction-section d-none" aria-label="پیش‌بینی">
                 <div class="prediction-head">
                   <div class="prediction-head__title">
                     <i class="bi bi-stars"></i>
-                    <span>Prediction system</span>
+                    <span>سامانه پیش‌بینی</span>
                   </div>
                   <span id="predictionStatus" class="prediction-status">—</span>
                 </div>
                 <div class="prediction-grid">
                   <div class="prediction-metric">
-                    <small>Input window</small>
+                    <small>پنجره ورودی</small>
                     <strong id="predictionWindow">—</strong>
                   </div>
                   <div class="prediction-metric">
-                    <small>Forecast horizon</small>
+                    <small>افق پیش‌بینی</small>
                     <strong id="predictionHorizon">—</strong>
                   </div>
                   <div class="prediction-metric">
@@ -317,42 +317,42 @@
                     <strong id="predictionRmse">—</strong>
                   </div>
                   <div class="prediction-metric">
-                    <small>Class accuracy</small>
+                    <small>دقت کلاس</small>
                     <strong id="predictionAccuracy">—</strong>
                   </div>
                   <div class="prediction-metric">
-                    <small>Observed through</small>
+                    <small>مشاهده تا</small>
                     <strong id="predictionObserved">—</strong>
                   </div>
                   <div class="prediction-metric">
-                    <small>Model versions</small>
+                    <small>نسخه‌های مدل</small>
                     <strong id="predictionVersions">—</strong>
                   </div>
                 </div>
                 <div id="predictionEval" class="prediction-eval">—</div>
                 <div id="predictionIntervalSection" class="prediction-methods d-none">
                   <div class="prediction-methods__head">
-                    <small>Uncertainty band</small>
+                    <small>باند عدم‌قطعیت</small>
                     <span id="predictionIntervalSummary" class="prediction-method-summary">—</span>
                   </div>
                   <div id="predictionIntervalSelector" class="prediction-method-selector"></div>
                 </div>
                 <div id="predictionMethodsSection" class="prediction-methods">
                   <div class="prediction-methods__head">
-                    <small>Forecast model on chart</small>
+                    <small>مدل پیش‌بینی روی نمودار</small>
                     <span id="predictionMethodSummary" class="prediction-method-summary">—</span>
                   </div>
                   <div id="predictionMethodSelector" class="prediction-method-selector"></div>
                 </div>
               </section>
 
-              <section class="trend-section" aria-label="Trend analysis">
+              <section class="trend-section" aria-label="تحلیل روند">
                 <div class="trend-head">
                   <div class="trend-head__left">
                     <div class="trend-head__title">
                       <i class="bi bi-graph-up-arrow"></i>
-                      <span>Trend analysis</span>
-                      <button id="trendHelpBtn" class="help-icon" type="button" title="Trend analysis guide"><i class="bi bi-exclamation-circle text-danger"></i></button>
+                      <span>تحلیل روند</span>
+                      <button id="trendHelpBtn" class="help-icon" type="button" title="راهنمای تحلیل روند"><i class="bi bi-exclamation-circle text-danger"></i></button>
                     </div>
                   </div>
                   <div class="trend-head__right">
@@ -374,17 +374,17 @@
 
                 <div id="kpiGrid" class="kpi-grid kpi-grid--trend" hx-swap="innerHTML">
                   <div class="kpi-card">
-                    <small>Kendall's τ</small>
+                    <small>تائوی کندال</small>
                     <strong id="tauVal">—</strong>
                     <span id="tauForecastVal" class="kpi-subvalue d-none">—</span>
                   </div>
                   <div class="kpi-card">
-                    <small>P-value</small>
+                    <small>مقدار P</small>
                     <strong id="pVal">—</strong>
                     <span id="pForecastVal" class="kpi-subvalue d-none">—</span>
                   </div>
                   <div class="kpi-card">
-                    <small>Sen's Slope</small>
+                    <small>شیب سن</small>
                     <strong id="senVal">—</strong>
                     <span id="senForecastVal" class="kpi-subvalue d-none">—</span>
                   </div>
@@ -392,17 +392,17 @@
 
                 <div id="trendHelpPanel" class="help-panel d-none tiny-font">
                   <button class="help-panel__close" data-close-help="trendHelpPanel" type="button">✕</button>
-                  <h6>What is trend analysis?</h6>
-                  <p>Trend analysis examines how a variable changes through time and whether values are systematically increasing, decreasing, or stable.</p>
-                  <h6>Mann-Kendall test</h6>
-                  <p>The Mann-Kendall test is non-parametric and does not require a specific distribution assumption.</p>
-                  <h6>Trend metrics</h6>
-                  <p><strong>Kendall's τ:</strong> correlation measure from -1 to +1. Positive values indicate increasing trends; negative values indicate decreasing trends.</p>
-                  <p><strong>P-value:</strong> statistical significance indicator. A value below 0.05 is typically considered significant at 95% confidence.</p>
-                  <p><strong>Sen's slope:</strong> robust estimate of median rate of change over time.</p>
-                  <h6>Trend line</h6>
-                  <p>The trend line visualizes the overall direction implied by Sen's slope.</p>
-                  <p>If forecast data are available for the selected dataset and index, the dashboard also shows a combined observed-plus-forecast trend summary.</p>
+                  <h6>تحلیل روند چیست؟</h6>
+                  <p>تحلیل روند نشان می‌دهد یک متغیر در طول زمان افزایشی، کاهشی یا پایدار بوده است.</p>
+                  <h6>آزمون من-کندال</h6>
+                  <p>آزمون من-کندال ناپارامتری است و به فرض توزیع خاصی نیاز ندارد.</p>
+                  <h6>شاخص‌های روند</h6>
+                  <p><strong>تائوی کندال:</strong> از -۱ تا +۱ تغییر می‌کند؛ مقادیر مثبت روند افزایشی و مقادیر منفی روند کاهشی را نشان می‌دهد.</p>
+                  <p><strong>مقدار P:</strong> شاخص معنی‌داری آماری است. معمولاً مقدار کمتر از ۰/۰۵ در سطح اطمینان ۹۵٪ معنی‌دار تلقی می‌شود.</p>
+                  <p><strong>شیب سن:</strong> برآورد مقاوم نرخ تغییرات در طول زمان است.</p>
+                  <h6>خط روند</h6>
+                  <p>خط روند جهت کلی تغییرات را بر اساس شیب سن نمایش می‌دهد.</p>
+                  <p>اگر داده پیش‌بینی موجود باشد، داشبورد خلاصه روند مشاهده‌شده به همراه پیش‌بینی را نیز نشان می‌دهد.</p>
                 </div>
                 <div id="trendNote" class="trend-note">—</div>
               </section>
@@ -412,79 +412,124 @@
       </aside>
     </div>
 
+    <aside id="droughtChatWidget" class="drought-chat-widget" aria-live="polite">
+      <section id="droughtChatPanel" class="drought-chat-panel d-none" aria-label="گفتگو با دستیار خشکسالی">
+        <header class="drought-chat-header">
+          <div class="drought-chat-header__text">
+            <div class="drought-chat-kicker">NVIDIA AI</div>
+            <h2 id="droughtChatTitle">دستیار خشکسالی</h2>
+          </div>
+          <div class="drought-chat-header__actions">
+            <button id="droughtChatClear" type="button">پاک‌کردن</button>
+            <button id="droughtChatClose" type="button" aria-label="بستن گفتگو">×</button>
+          </div>
+        </header>
+
+        <div class="drought-chat-settings">
+          <label for="droughtChatProvider">
+            <span>ارائه‌دهنده</span>
+            <select id="droughtChatProvider"></select>
+          </label>
+          <label for="droughtChatModel">
+            <span>مدل</span>
+            <select id="droughtChatModel" dir="ltr"></select>
+          </label>
+          <div id="droughtChatModelHint" class="drought-chat-model-hint"></div>
+        </div>
+
+        <div id="droughtChatMessages" class="drought-chat-messages"></div>
+        <div id="droughtChatStatus" class="drought-chat-status d-none"></div>
+
+        <form id="droughtChatForm" class="drought-chat-form">
+          <textarea
+            id="droughtChatInput"
+            rows="2"
+            maxlength="2000"
+            placeholder="درباره ایستگاه/منطقه انتخاب‌شده، کلاس خشکسالی، روند یا پیش‌بینی سؤال کنید..."
+          ></textarea>
+          <button id="droughtChatSend" type="submit">ارسال</button>
+        </form>
+      </section>
+
+      <button id="droughtChatToggle" type="button" class="drought-chat-toggle" aria-expanded="false">
+        <span class="drought-chat-toggle__icon" aria-hidden="true">AI</span>
+        <span>گفتگو درباره خشکسالی</span>
+      </button>
+    </aside>
+
     <div id="modalBackdrop" class="overlay-backdrop" aria-hidden="true"></div>
 
     <div id="aboutModal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" aria-hidden="true">
       <div class="app-modal__dialog" role="document">
         <div class="app-modal__header">
-          <div><div id="aboutTitle" class="app-modal__title">About this dashboard</div></div>
-          <button id="aboutClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+          <div><div id="aboutTitle" class="app-modal__title">درباره این داشبورد</div></div>
+          <button id="aboutClose" class="icon-btn" type="button" aria-label="بستن">✕</button>
         </div>
         <div class="app-modal__body">
           <p class="mb-2">
-            This dashboard supports global drought monitoring workflows by combining observational and gridded climate data into a single analysis experience for maps, time series, and trend diagnostics.
+            این داشبورد برای پایش خشکسالی طراحی شده و داده‌های مشاهداتی و شبکه‌ای اقلیمی را در یک محیط واحد برای نقشه، سری زمانی و تحلیل روند کنار هم قرار می‌دهد.
           </p>
           <ul class="clean-list">
-            <li><strong>Map:</strong> hover for quick details, click for region analysis.</li>
-            <li><strong>Indicators:</strong> standardized drought indices and supporting hydroclimate variables are available in one interface.</li>
-            <li><strong>Colors:</strong> drought classes follow D0 to D4 alongside normal or wet conditions.</li>
-            <li><strong>Performance:</strong> API requests are cached and the page updates without full reload.</li>
-            <li><strong>Layout:</strong> responsive design for desktop and mobile.</li>
+            <li><strong>نقشه:</strong> با نگه‌داشتن نشانگر جزئیات سریع را ببینید و با کلیک، تحلیل منطقه را باز کنید.</li>
+            <li><strong>شاخص‌ها:</strong> شاخص‌های استاندارد خشکسالی و متغیرهای پشتیبان هیدروکلیماتولوژی در یک رابط در دسترس هستند.</li>
+            <li><strong>رنگ‌ها:</strong> کلاس‌های خشکسالی از D0 تا D4 همراه با وضعیت نرمال یا مرطوب نمایش داده می‌شوند.</li>
+            <li><strong>کارایی:</strong> درخواست‌های API کش می‌شوند و صفحه بدون بارگذاری کامل به‌روزرسانی می‌شود.</li>
+            <li><strong>چیدمان:</strong> طراحی واکنش‌گرا برای دسکتاپ و موبایل.</li>
           </ul>
           <hr />
-          <h6 class="mb-2">Data foundation</h6>
+          <h6 class="mb-2">پایه داده</h6>
           <ul class="clean-list">
-            <li><strong>GHCN-Daily:</strong> station-based precipitation records support global station drought monitoring.</li>
-            <li><strong>TerraClimate:</strong> gridded hydroclimate variables extend the dashboard with broader climate and water-balance context.</li>
-            <li><strong>Coverage:</strong> more than 12,000 stations were screened for quality, with at most 10% missing data in the selected period.</li>
+            <li><strong>GHCN-Daily:</strong> رکوردهای بارش ایستگاهی برای پایش خشکسالی ایستگاه‌ها استفاده می‌شوند.</li>
+            <li><strong>TerraClimate:</strong> متغیرهای شبکه‌ای هیدروکلیماتولوژی، زمینه اقلیمی و بیلان آب را گسترده‌تر می‌کنند.</li>
+            <li><strong>پوشش:</strong> بیش از ۱۲٬۰۰۰ ایستگاه از نظر کیفیت غربال شده‌اند و سهم داده‌های مفقود در دوره انتخابی حداکثر ۱۰٪ است.</li>
           </ul>
-          <h6 class="mb-2">Computed products</h6>
+          <h6 class="mb-2">محصولات محاسبه‌شده</h6>
           <ul class="clean-list">
-            <li><strong>SPI:</strong> standardized precipitation-based drought monitoring.</li>
-            <li><strong>SPEI:</strong> drought monitoring that accounts for both precipitation and atmospheric demand.</li>
-            <li><strong>SSI and companion variables:</strong> additional standardized indicators and supporting climate fields are included where available.</li>
+            <li><strong>SPI:</strong> پایش خشکسالی استاندارد بر پایه بارش.</li>
+            <li><strong>SPEI:</strong> پایش خشکسالی با در نظر گرفتن بارش و تقاضای اتمسفری.</li>
+            <li><strong>SSI و متغیرهای همراه:</strong> شاخص‌های استاندارد و فیلدهای اقلیمی پشتیبان در صورت وجود نمایش داده می‌شوند.</li>
           </ul>
-          <p class="mb-2"><strong>Computation framework:</strong> drought indicators are derived with the Standardized Drought Analysis Toolbox (SDAT) framework, and trend summaries are reported using Mann-Kendall and Sen's slope diagnostics.</p>
+          <p class="mb-2"><strong>چارچوب محاسباتی:</strong> شاخص‌های خشکسالی با چارچوب SDAT محاسبه می‌شوند و خلاصه روند با آزمون Mann-Kendall و شیب Sen گزارش می‌شود.</p>
           <ul class="clean-list">
             <li>Hao Z., AghaKouchak A., Nakhjiri N., Farahmand A. (2014). <em>Scientific Data</em>, 1:140001.</li>
             <li>Farahmand A., AghaKouchak A. (2015). <em>Advances in Water Resources</em>, 76, 140-145.</li>
           </ul>
           <hr />
-          <h6 class="mb-2">API usage (full example)</h6>
+          <h6 class="mb-2">نمونه استفاده از API</h6>
           <p class="mb-2">
-            Default API base URL:
+            آدرس پایه پیش‌فرض API:
             <code>http://localhost:8000</code>
           </p>
           <ul class="clean-list">
-            <li><code>GET /datasets</code> — list available layers</li>
-            <li><code>GET /meta?level=station</code> — metadata (time range + indices)</li>
-            <li><code>GET /mapdata?level=station&amp;index=spi6&amp;date=2020-01</code> — map data</li>
-            <li><code>GET /timeseries?region_id=10001&amp;level=station&amp;index=spi6</code> — time series</li>
-            <li><code>GET /kpi?region_id=10001&amp;level=station&amp;index=spi6&amp;date=2020-01</code> — KPI + trend</li>
+            <li><code>GET /datasets</code> - فهرست لایه‌های موجود</li>
+            <li><code>GET /meta?level=station</code> - فراداده شامل بازه زمانی و شاخص‌ها</li>
+            <li><code>GET /mapdata?level=station&amp;index=spi6&amp;date=2020-01</code> - داده نقشه</li>
+            <li><code>GET /timeseries?region_id=10001&amp;level=station&amp;index=spi6</code> - سری زمانی</li>
+            <li><code>GET /kpi?region_id=10001&amp;level=station&amp;index=spi6&amp;date=2020-01</code> - KPI و روند</li>
           </ul>
-          <p class="mb-1"><strong>End-to-end cURL example:</strong></p>
-          <pre class="mb-2" style="white-space: pre-wrap;">
-# 1) Get datasets
+          <p class="mb-1"><strong>نمونه کامل cURL:</strong></p>
+          <pre class="mb-2 ltr-block" style="white-space: pre-wrap;">
+# 1) دریافت دیتاست‌ها
 curl "http://localhost:8000/datasets"
 
-# 2) Get metadata for station layer
+# 2) دریافت فراداده لایه ایستگاه
 curl "http://localhost:8000/meta?level=station"
 
-# 3) Get map data for a climate index (example: precip)
+# 3) دریافت داده نقشه برای یک شاخص اقلیمی
 curl "http://localhost:8000/mapdata?level=station&index=precip&date=2020-01"
 
-# 4) Get time series for one region
+# 4) دریافت سری زمانی یک منطقه
 curl "http://localhost:8000/timeseries?region_id=10001&level=station&index=precip"
 
-# 5) Get KPI + trend for the same region at one month
+# 5) دریافت KPI و روند همان منطقه در یک ماه
 curl "http://localhost:8000/kpi?region_id=10001&level=station&index=precip&date=2020-01"
           </pre>
           <div class="callout">
-            This project is inspired by <a href="https://drought.eng.uci.edu/" target="_blank" rel="noopener noreferrer">drought.eng.uci.edu</a>. For the best experience, use an up-to-date browser. On mobile, switch between Map, Filters, and Analysis with the top navigation. Soon, new indices such as NDVI, EVI, and more will be added.
+            این پروژه از <a href="https://drought.eng.uci.edu/" target="_blank" rel="noopener noreferrer">drought.eng.uci.edu</a> الهام گرفته است. برای بهترین تجربه از مرورگر به‌روز استفاده کنید. در موبایل، از ناوبری بالای صفحه بین نقشه، فیلترها و تحلیل جابه‌جا شوید. به‌زودی شاخص‌هایی مانند NDVI، EVI و موارد دیگر اضافه می‌شوند.
           </div>
         </div>
         <div class="app-modal__footer">
-          <button id="aboutOk" class="btn btn-primary btn-sm" type="button">Got it</button>
+          <button id="aboutOk" class="btn btn-primary btn-sm" type="button">متوجه شدم</button>
         </div>
       </div>
     </div>
@@ -493,48 +538,48 @@ curl "http://localhost:8000/kpi?region_id=10001&level=station&index=precip&date=
       <div class="app-modal__dialog app-modal__dialog--compact" role="document">
         <div class="app-modal__header">
           <div>
-            <div class="app-modal__title" id="contactTitle">Contact HydroCode</div>
-            <div class="app-modal__subtitle">Let's talk about drought analytics, hydroclimate data, and dashboard development.</div>
+            <div class="app-modal__title" id="contactTitle">تماس با HydroCode</div>
+            <div class="app-modal__subtitle">برای تحلیل خشکسالی، داده‌های هیدروکلیماتولوژی و توسعه داشبورد با ما در ارتباط باشید.</div>
           </div>
-          <button id="contactClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+          <button id="contactClose" class="icon-btn" type="button" aria-label="بستن">✕</button>
         </div>
         <div class="app-modal__body">
           <div class="contact-grid">
             <a class="contact-card" href="mailto:hydrocodeir@gmail.com">
               <span class="contact-card__icon"><i class="bi bi-envelope-paper-heart"></i></span>
               <span class="contact-card__meta">
-                <span class="contact-card__label">Email</span>
+                <span class="contact-card__label">ایمیل</span>
                 <span class="contact-card__value">hydrocodeir@gmail.com</span>
               </span>
             </a>
             <a class="contact-card" href="https://t.me/hydrocode" target="_blank" rel="noopener noreferrer">
               <span class="contact-card__icon"><i class="bi bi-telegram"></i></span>
               <span class="contact-card__meta">
-                <span class="contact-card__label">Telegram</span>
+                <span class="contact-card__label">تلگرام</span>
                 <span class="contact-card__value">@hydrocode</span>
               </span>
             </a>
             <a class="contact-card" href="https://www.linkedin.com/in/pooyashirazi" target="_blank" rel="noopener noreferrer">
               <span class="contact-card__icon"><i class="bi bi-linkedin"></i></span>
               <span class="contact-card__meta">
-                <span class="contact-card__label">LinkedIn</span>
+                <span class="contact-card__label">لینکدین</span>
                 <span class="contact-card__value">pooyashirazi</span>
               </span>
             </a>
             <a class="contact-card" href="https://wa.me/989381009667" target="_blank" rel="noopener noreferrer">
               <span class="contact-card__icon"><i class="bi bi-whatsapp"></i></span>
               <span class="contact-card__meta">
-                <span class="contact-card__label">WhatsApp</span>
-                <span class="contact-card__value">0098 938 100 9667</span>
+                <span class="contact-card__label">واتساپ</span>
+                <span class="contact-card__value">۰۰۹۸ ۹۳۸ ۱۰۰ ۹۶۶۷</span>
               </span>
             </a>
           </div>
           <div class="callout">
-            If you have feedback, partnership ideas, or data questions, this is the fastest way to reach us.
+            اگر بازخورد، ایده همکاری یا پرسش داده‌ای دارید، این مسیر سریع‌ترین راه ارتباط با ماست.
           </div>
         </div>
         <div class="app-modal__footer">
-          <button id="contactOk" class="btn btn-primary btn-sm" type="button">Close</button>
+          <button id="contactOk" class="btn btn-primary btn-sm" type="button">بستن</button>
         </div>
       </div>
     </div>
@@ -543,24 +588,24 @@ curl "http://localhost:8000/kpi?region_id=10001&level=station&index=precip&date=
       <div class="app-modal__dialog app-modal__dialog--compact" role="document">
         <div class="app-modal__header">
           <div>
-            <div class="app-modal__title" id="startupNoticeTitle">Performance Notice</div>
-            <div class="app-modal__subtitle">A quick heads-up before you start exploring the dashboard.</div>
+            <div class="app-modal__title" id="startupNoticeTitle">نکته عملکرد</div>
+            <div class="app-modal__subtitle">یک توضیح کوتاه پیش از شروع کار با داشبورد.</div>
           </div>
-          <button id="startupNoticeClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+          <button id="startupNoticeClose" class="icon-btn" type="button" aria-label="بستن">✕</button>
         </div>
         <div class="app-modal__body">
           <div class="notice-hero">
             <div class="notice-hero__icon"><i class="bi bi-lightning-charge"></i></div>
             <div>
-              <div class="notice-hero__title">Small server, big dataset</div>
+              <div class="notice-hero__title">سرور کوچک، دیتاست بزرگ</div>
               <p class="mb-0">
-                This dashboard is currently running on a very small VPS to keep the project online. We have optimized it as much as possible, but some maps and analyses may still load a little slowly. For the smoothest experience, the dashboard performs better on desktop than on mobile. Thank you for your patience.
+                این داشبورد فعلا روی یک VPS کوچک اجرا می‌شود تا پروژه آنلاین بماند. تا حد امکان بهینه‌سازی انجام شده، اما ممکن است بعضی نقشه‌ها و تحلیل‌ها کمی کند بارگذاری شوند. برای تجربه روان‌تر، نسخه دسکتاپ بهتر از موبایل عمل می‌کند. از صبوری شما سپاسگزاریم.
               </p>
             </div>
           </div>
         </div>
         <div class="app-modal__footer">
-          <button id="startupNoticeOk" class="btn btn-primary btn-sm" type="button">Continue</button>
+          <button id="startupNoticeOk" class="btn btn-primary btn-sm" type="button">ادامه</button>
         </div>
       </div>
     </div>

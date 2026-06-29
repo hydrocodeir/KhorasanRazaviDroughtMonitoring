@@ -24,6 +24,28 @@ class AppSettings(BaseSettings):
     cache_ttl_long_seconds: int = Field(default=1800, alias="CACHE_TTL_LONG_SECONDS")
     cache_ttl_daily_seconds: int = Field(default=86400, alias="CACHE_TTL_DAILY_SECONDS")
 
+    nvidia_api_key: str = Field(default="", alias="NVIDIA_API_KEY")
+    nvidia_model: str = Field(default="openai/gpt-oss-120b", alias="NVIDIA_MODEL")
+    nvidia_models: str = Field(
+        default=(
+            "openai/gpt-oss-120b,"
+            "nvidia/nemotron-3-super-120b-a12b,"
+            "z-ai/glm-5.1,"
+            "qwen/qwen3-next-80b-a3b-instruct,"
+            "qwen/qwen3.5-397b-a17b,"
+            "moonshotai/kimi-k2.6,"
+            "minimaxai/minimax-m2.7,"
+            "deepseek-ai/deepseek-v4-flash,"
+            "google/gemma-4-31b-it"
+        ),
+        alias="NVIDIA_MODELS",
+    )
+    nvidia_base_url: str = Field(
+        default="https://integrate.api.nvidia.com/v1",
+        alias="NVIDIA_BASE_URL",
+    )
+    ai_timeout_seconds: int = Field(default=60, alias="AI_TIMEOUT_SECONDS")
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
