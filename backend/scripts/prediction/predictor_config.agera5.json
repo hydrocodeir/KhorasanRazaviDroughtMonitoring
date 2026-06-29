@@ -7,25 +7,25 @@
   "baseline_end": "2010-12-31",
   "enso_file": "/datasets/enso_nino34.csv",
   "helpers": [
-      {
+    {
       "name": "precipitation",
       "enabled": true,
       "input": ["/datasets/AgERA5/precipitation"],
-      "variable": "precipitation",
+      "variable": "Precipitation_Flux",
       "output": "precipitation"
     },
     {
       "name": "temperature",
       "enabled": true,
       "input": ["/datasets/AgERA5/temperature"],
-      "variable": "temperature",
+      "variable": "Temperature_Air_2m_Mean_24h",
       "output": "temperature"
     },
     {
       "name": "dewpoint",
       "enabled": true,
       "input": ["/datasets/AgERA5/dewpoint"],
-      "variable": "dewpoint",
+      "variable": "Dew_Point_Temperature_2m_Mean_24h",
       "output": "dewpoint"
     }
   ]

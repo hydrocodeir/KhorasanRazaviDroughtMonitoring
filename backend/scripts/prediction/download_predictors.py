@@ -145,7 +145,10 @@ def dataset_series_from_files(
         ds = xr.open_dataset(path)
         data_var = variable or (output_name if output_name in ds.data_vars else next(iter(ds.data_vars)))
         if data_var not in ds:
-            raise ValueError(f"Variable {data_var!r} not found in {path.name!r}.")
+            available = ", ".join(repr(name) for name in ds.data_vars) or "<none>"
+            raise ValueError(
+                f"Variable {data_var!r} not found in {path.name!r}. Available variables: {available}."
+            )
         series = area_weighted_mean(ds[data_var], bbox).to_dataframe(name=output_name).reset_index()
         time_col = "time" if "time" in series.columns else "date"
         series["date"] = month_start(series[time_col])
