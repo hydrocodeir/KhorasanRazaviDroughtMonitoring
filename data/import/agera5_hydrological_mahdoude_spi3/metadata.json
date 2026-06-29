@@ -5,6 +5,10 @@
   "source_title": "AgERA5",
   "boundary_key": "hydrological_mahdoude",
   "boundary_title": "Hydrological / Mahdoude",
+  "scale": 3,
+  "available_indices": [
+    "spi3"
+  ],
   "variable": "Precipitation_Flux",
   "input_units": "mm d-1",
   "spatial_method": "exact polygon-cell intersection; spherical-area weighted mean precipitation",

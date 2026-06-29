@@ -32,13 +32,16 @@ def main() -> None:
     parser.add_argument("--source", help="source_key to refresh, e.g. terraclimate")
     parser.add_argument("--index", action="append", help="Index to train, repeatable")
     parser.add_argument("--scale", action="append", type=int, help="SPI scale to train, repeatable")
+    parser.add_argument("--method", action="append", help="Prediction method to train, repeatable")
     parser.add_argument("--dataset", help="Train only one dataset")
+    parser.add_argument("--use-helpers", choices=["auto", "yes", "no"], default="auto", help="Whether helper predictors should be used in helper-aware models")
     parser.add_argument(
         "--predictor-input",
         action="append",
         help="Local predictor input file, glob, or directory. Repeatable.",
     )
     parser.add_argument("--enso-file", help="Optional local ENSO CSV/Parquet with date and enso_nino34")
+    parser.add_argument("--predictor-config", help="Optional JSON config for helper-specific predictor folders")
     parser.add_argument("--skip-predictors", action="store_true", help="Do not update predictor files")
     parser.add_argument("--skip-import", action="store_true", help="Do not import generated datasets")
     parser.add_argument("--skip-cache-invalidate", action="store_true", help="Do not invalidate API cache")
@@ -54,6 +57,15 @@ def main() -> None:
                 predictor_cmd += ["--input", item]
             if args.enso_file:
                 predictor_cmd += ["--enso-file", args.enso_file]
+            if args.predictor_config:
+                predictor_cmd += ["--config", args.predictor_config]
+            predictor_cmd += ["--use-helpers", "yes" if args.use_helpers != "no" else "no"]
+            run_step(predictor_cmd, dry_run=args.dry_run)
+        elif args.source and args.predictor_config:
+            predictor_cmd = [py, "-m", "scripts.prediction.download_predictors", "--source", args.source, "--config", args.predictor_config]
+            predictor_cmd += ["--use-helpers", "yes" if args.use_helpers != "no" else "no"]
+            if args.enso_file:
+                predictor_cmd += ["--enso-file", args.enso_file]
             run_step(predictor_cmd, dry_run=args.dry_run)
         else:
             print(
@@ -65,7 +77,7 @@ def main() -> None:
     if not args.skip_import:
         run_step([py, "import_data.py", "--generated-only", "--replace-dataset", "--skip-trends"], dry_run=args.dry_run)
 
-    train_cmd = [py, "-m", "scripts.prediction.train_lstm_attention"]
+    train_cmd = [py, "-m", "scripts.prediction.train_prediction_models"]
     if args.source:
         train_cmd += ["--source", args.source]
     if args.dataset:
@@ -74,6 +86,9 @@ def main() -> None:
         train_cmd += ["--index", idx]
     for scale in args.scale or []:
         train_cmd += ["--scale", str(max(1, int(scale)))]
+    for method in args.method or []:
+        train_cmd += ["--method", method]
+    train_cmd += ["--use-helpers", args.use_helpers]
     run_step(train_cmd, dry_run=args.dry_run)
 
     if not args.skip_cache_invalidate:

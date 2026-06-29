@@ -5,6 +5,7 @@
   "source_title": "Razavi Khorasan Stations",
   "boundary_key": "station",
   "boundary_title": "Stations",
+  "scale": 3,
   "variable": "rrr24",
   "input_units": "mm",
   "input_time_resolution": "daily",

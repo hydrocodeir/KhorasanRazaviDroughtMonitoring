@@ -330,6 +330,20 @@
                   </div>
                 </div>
                 <div id="predictionEval" class="prediction-eval">—</div>
+                <div id="predictionIntervalSection" class="prediction-methods d-none">
+                  <div class="prediction-methods__head">
+                    <small>Uncertainty band</small>
+                    <span id="predictionIntervalSummary" class="prediction-method-summary">—</span>
+                  </div>
+                  <div id="predictionIntervalSelector" class="prediction-method-selector"></div>
+                </div>
+                <div id="predictionMethodsSection" class="prediction-methods">
+                  <div class="prediction-methods__head">
+                    <small>Forecast model on chart</small>
+                    <span id="predictionMethodSummary" class="prediction-method-summary">—</span>
+                  </div>
+                  <div id="predictionMethodSelector" class="prediction-method-selector"></div>
+                </div>
               </section>
 
               <section class="trend-section" aria-label="Trend analysis">
@@ -362,17 +376,17 @@
                   <div class="kpi-card">
                     <small>Kendall's τ</small>
                     <strong id="tauVal">—</strong>
-                    <span id="tauForecastVal" class="kpi-subvalue">With forecast: —</span>
+                    <span id="tauForecastVal" class="kpi-subvalue d-none">—</span>
                   </div>
                   <div class="kpi-card">
                     <small>P-value</small>
                     <strong id="pVal">—</strong>
-                    <span id="pForecastVal" class="kpi-subvalue">With forecast: —</span>
+                    <span id="pForecastVal" class="kpi-subvalue d-none">—</span>
                   </div>
                   <div class="kpi-card">
                     <small>Sen's Slope</small>
                     <strong id="senVal">—</strong>
-                    <span id="senForecastVal" class="kpi-subvalue">With forecast: —</span>
+                    <span id="senForecastVal" class="kpi-subvalue d-none">—</span>
                   </div>
                 </div>
 
@@ -388,6 +402,7 @@
                   <p><strong>Sen's slope:</strong> robust estimate of median rate of change over time.</p>
                   <h6>Trend line</h6>
                   <p>The trend line visualizes the overall direction implied by Sen's slope.</p>
+                  <p>If forecast data are available for the selected dataset and index, the dashboard also shows a combined observed-plus-forecast trend summary.</p>
                 </div>
                 <div id="trendNote" class="trend-note">—</div>
               </section>

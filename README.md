@@ -402,6 +402,19 @@ docker compose -f docker-compose.dev.yml exec backend \
 data/prediction/features/terraclimate/monthly_predictors.parquet
 ```
 
+اگر بخواهید برای هر helper مسیر جدا تعریف کنید یا بعضی helperها را خاموش
+کنید، از فایل config استفاده کنید:
+
+```bash
+make prediction-build-predictors \
+  PREDICTION_SOURCE=terraclimate \
+  PREDICTOR_CONFIG="/app/backend/scripts/prediction/predictor_config.example.json"
+```
+
+در این config می‌توانید برای هر helper جداگانه `enabled: true/false` و مسیر
+پوشه‌ی خودش را بدهید؛ مثلاً بارش در یک فولدر، رطوبت خاک در فولدر دیگر، و
+`ENSO` در فایل مستقل.
+
 ### آماده‌سازی AgERA5
 
 برای AgERA5 فرض بر این است که فایل‌های NetCDF خام را قبلاً در `DATASETS_ROOT`
@@ -490,6 +503,16 @@ data/prediction/features/<new_source_key>/monthly_predictors.parquet
 
 ### آموزش و انتشار forecast
 
+اکنون سه روش prediction پشتیبانی می‌شوند:
+
+- `lstm_attention`
+- `random_forest`
+- `garch`
+
+روش `garch` فقط از خود سری زمانی شاخص استفاده می‌کند و helper نمی‌خواهد.
+روش‌های `lstm_attention` و `random_forest` می‌توانند helperها را با
+`PREDICTION_USE_HELPERS=yes|no` استفاده یا نادیده بگیرند.
+
 همه منابع و همه شاخص‌های drought غیرایستگاهی:
 
 ```bash
@@ -506,6 +529,35 @@ make prediction-train PREDICTION_SOURCE=terraclimate PREDICTION_SCALE=6
 
 ```bash
 make prediction-train PREDICTION_SOURCE=terraclimate PREDICTION_INDEX=spi3
+```
+
+اجرای روش مشخص:
+
+```bash
+make prediction-train \
+  PREDICTION_SOURCE=terraclimate \
+  PREDICTION_SCALE=6 \
+  PREDICTION_METHOD=garch
+```
+
+یا:
+
+```bash
+make prediction-train \
+  PREDICTION_SOURCE=terraclimate \
+  PREDICTION_SCALE=6 \
+  PREDICTION_METHOD=random_forest \
+  PREDICTION_USE_HELPERS=yes
+```
+
+اگر بخواهید helperها عمداً استفاده نشوند:
+
+```bash
+make prediction-train \
+  PREDICTION_SOURCE=terraclimate \
+  PREDICTION_SCALE=6 \
+  PREDICTION_METHOD=random_forest \
+  PREDICTION_USE_HELPERS=no
 ```
 
 در سرور:
@@ -539,10 +591,11 @@ docker compose -f docker-compose.dev.yml up --build -d backend celery_worker
 ```
 
 مدل‌ها به‌صورت pooled برای هر `source_key + index` آموزش داده می‌شوند و برای
-هر dataset همان source forecast جدا ذخیره می‌شود. ارزیابی با backtest روی
-ماه‌های انتهایی انجام می‌شود و معیارهای `MAE`, `RMSE`, `bias`, `R²`,
-`correlation` و دقت کلاس خشکسالی برای leadهای ۱ تا ۱۲ در داشبورد نمایش داده
-می‌شوند.
+هر dataset همان source forecast جدا ذخیره می‌شود. از این به بعد forecastها به
+تفکیک `method_name` هم ذخیره می‌شوند و داشبورد می‌تواند چند روش را هم‌زمان روی
+نمودار نمایش دهد. ارزیابی با backtest روی ماه‌های انتهایی انجام می‌شود و
+معیارهای `MAE`, `RMSE`, `bias`, `R²`, `correlation` و دقت کلاس خشکسالی برای
+leadهای ۱ تا ۱۲ در داشبورد نمایش داده می‌شوند.
 
 ### نسخه‌بندی مدل‌ها
 

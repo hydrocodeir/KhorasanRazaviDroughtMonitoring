@@ -5,6 +5,10 @@
   "source_title": "TerraClimate",
   "boundary_key": "administrative_razavikhorasan_state",
   "boundary_title": "Administrative / RazaviKhorasan / State",
+  "scale": 3,
+  "available_indices": [
+    "spi3"
+  ],
   "variable": "ppt",
   "input_units": "mm",
   "spatial_method": "exact polygon-cell intersection; spherical-area weighted mean precipitation",

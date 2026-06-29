@@ -76,7 +76,19 @@ def test_prediction_forecast_api_returns_uncertainty_and_freshness():
                 {
                     "m": model_key,
                     "features": json.dumps(["y", "y_lag_1", "month_sin", "month_cos"]),
-                    "params": json.dumps({"adaptive_inputs": {"dataset_reports": {}}}),
+                    "params": json.dumps(
+                        {
+                            "adaptive_inputs": {"dataset_reports": {}},
+                            "uncertainty": {
+                                "default_interval_method": "backtest_q90",
+                                "available_interval_methods": ["backtest_q90", "historical_spread"],
+                                "interval_labels": {
+                                    "backtest_q90": "Backtest Q90",
+                                    "historical_spread": "Historical Spread",
+                                },
+                            },
+                        }
+                    ),
                     "metrics": json.dumps({"rmse": 0.4}),
                 },
             )
@@ -114,14 +126,31 @@ def test_prediction_forecast_api_returns_uncertainty_and_freshness():
                     """
                     INSERT INTO prediction_forecasts (
                       dataset_key, index_name, feature_id, issue_date,
-                      target_date, lead_month, value, lower_value, upper_value
+                      target_date, lead_month, value, lower_value, upper_value, intervals
                     )
                     VALUES
-                      (:k, 'spi3', 'f1', :issue, :d1, 1, -0.9, -1.2, -0.6),
-                      (:k, 'spi3', 'f1', :issue, :d2, 2, -1.1, -1.5, -0.7)
+                      (:k, 'spi3', 'f1', :issue, :d1, 1, -0.9, -1.2, -0.6, CAST(:i1 AS JSONB)),
+                      (:k, 'spi3', 'f1', :issue, :d2, 2, -1.1, -1.5, -0.7, CAST(:i2 AS JSONB))
                     """
                 ),
-                {"k": dataset_key, "issue": date(2024, 1, 1), "d1": date(2024, 3, 1), "d2": date(2024, 4, 1)},
+                {
+                    "k": dataset_key,
+                    "issue": date(2024, 1, 1),
+                    "d1": date(2024, 3, 1),
+                    "d2": date(2024, 4, 1),
+                    "i1": json.dumps(
+                        {
+                            "backtest_q90": {"label": "Backtest Q90", "lower": -1.2, "upper": -0.6},
+                            "historical_spread": {"label": "Historical Spread", "lower": -1.05, "upper": -0.75},
+                        }
+                    ),
+                    "i2": json.dumps(
+                        {
+                            "backtest_q90": {"label": "Backtest Q90", "lower": -1.5, "upper": -0.7},
+                            "historical_spread": {"label": "Historical Spread", "lower": -1.3, "upper": -0.9},
+                        }
+                    ),
+                },
             )
             conn.execute(
                 text(
@@ -140,8 +169,13 @@ def test_prediction_forecast_api_returns_uncertainty_and_freshness():
         assert forecast.status_code == 200
         payload = forecast.json()
         assert payload["available"] is True
+        assert payload["default_method"] == "lstm_attention"
+        assert payload["available_methods"] == ["lstm_attention"]
         assert payload["data"][0]["lower"] == -1.2
         assert payload["data"][0]["upper"] == -0.6
+        assert payload["default_interval_method"] == "backtest_q90"
+        assert payload["available_interval_methods"] == ["backtest_q90", "historical_spread"]
+        assert payload["data"][0]["intervals"]["historical_spread"]["upper"] == -0.75
         assert payload["versioning"]["version_count"] == 1
         assert payload["freshness"]["is_stale"] is True
 

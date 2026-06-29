@@ -483,6 +483,25 @@ data/import/<dataset_key>/geoinfo.geojson
 
 پس datasetهای ایستگاهی مثل `razavi_khorasan_station_spi3` یا `razavi_khorasan_station_spi6` فعلاً پیش‌بینی ندارند، ولی datasetهای TerraClimate و AgERA5 و FLDAS2 روی پهنه‌ها می‌توانند forecast داشته باشند.
 
+## 22.1. ترندها برای حالت بدون پیش‌بینی و با پیش‌بینی چگونه هستند؟
+
+در نسخه فعلی پروژه باید بین دو چیز تفاوت بگذاریم:
+
+1. `trend_stats` که در دیتابیس ذخیره می‌شود
+2. خط نمایشی `Trend + Forecast` که فقط در نمودار فرانت دیده می‌شود
+
+نکته مهم:
+
+1. ترندهای ذخیره‌شده در جدول `trend_stats` فقط با داده‌های observed و full-history همان dataset محاسبه می‌شوند.
+2. این ترندها در import یا با `make precompute-trends` از روی جدول‌های `ts_<dataset_key>` ساخته می‌شوند.
+3. forecastهای بخش prediction داخل `trend_stats` وارد نمی‌شوند.
+4. وقتی در نمودار فرانت خط `Trend + Forecast` می‌بینید، این یک خط ترکیبی برای visualization است و به معنی ذخیره‌شدن یک trend دوم در دیتابیس نیست.
+
+پس پاسخ کوتاه این است:
+
+1. بله، در UI هر دو نمایش وجود دارد: `Observed Trend` و `Trend + Forecast`.
+2. نه، در لایه backend/database فقط trend observed به صورت رسمی precompute و ذخیره می‌شود.
+
 ## 23. داده‌های کمکی پیش‌بینی باید کجا ذخیره شوند؟
 
 فایل‌های predictor ماهانه باید در این مسیر باشند:
@@ -556,6 +575,35 @@ docker compose -f docker-compose.dev.yml exec backend \
   --enso-file "/datasets/climate_indices/enso_nino34.csv"
 ```
 
+اگر `--enso-file` ندهید، اسکریپت خودش به طور پیش‌فرض شاخص Nino 3.4 را از این منبع رسمی NOAA PSL می‌خواند:
+
+```text
+https://psl.noaa.gov/data/correlation/nina34.data
+```
+
+اگر بخواهید فایل را خودتان دانلود و آرشیو کنید، یک مسیر پیشنهادی این است:
+
+```text
+<DATASETS_ROOT>/climate_indices/enso_nino34.csv
+```
+
+و فایل محلی باید حداقل این دو ستون را داشته باشد:
+
+1. `date`
+2. `enso_nino34`
+
+اگر بخواهید برای هر helper مسیر جدا، و برای هر helper حالت `yes/no` تعریف
+کنید، از فایل config استفاده کنید:
+
+```bash
+make prediction-build-predictors \
+  PREDICTION_SOURCE=terraclimate \
+  PREDICTOR_CONFIG="/app/backend/scripts/prediction/predictor_config.example.json"
+```
+
+در این فایل می‌توانید برای هر helper مثل بارش، رطوبت خاک، `PET`، `TMIN` و
+`TMAX` فولدر جداگانه بدهید.
+
 ## 26. چگونه predictorهای AgERA5 را بسازیم؟
 
 برای AgERA5 باید فایل‌های NetCDF خام از قبل زیر `DATASETS_ROOT` وجود داشته باشند. سپس اجرا کنید:
@@ -595,6 +643,18 @@ docker compose -f docker-compose.dev.yml exec backend \
 
 ## 28. چگونه مدل پیش‌بینی را آموزش دهیم؟
 
+سه روش prediction پشتیبانی می‌شوند:
+
+1. `lstm_attention`
+2. `random_forest`
+3. `xgboost`
+
+نکته مهم:
+
+1. روش‌های `lstm_attention`، `random_forest` و `xgboost` می‌توانند helperها را
+   استفاده کنند یا نکنند.
+2. برای این سه روش می‌توانید `PREDICTION_USE_HELPERS=yes` یا
+   `PREDICTION_USE_HELPERS=no` بدهید.
 برای آموزش همه sourceهای غیرایستگاهی:
 
 ```bash
@@ -611,6 +671,35 @@ make prediction-train PREDICTION_SOURCE=terraclimate PREDICTION_SCALE=6
 
 ```bash
 make prediction-train PREDICTION_SOURCE=terraclimate PREDICTION_INDEX=spi3
+```
+
+برای آموزش با روش مشخص:
+
+```bash
+make prediction-train \
+  PREDICTION_SOURCE=terraclimate \
+  PREDICTION_SCALE=6 \
+  PREDICTION_METHOD=xgboost
+```
+
+یا:
+
+```bash
+make prediction-train \
+  PREDICTION_SOURCE=terraclimate \
+  PREDICTION_SCALE=6 \
+  PREDICTION_METHOD=random_forest \
+  PREDICTION_USE_HELPERS=yes
+```
+
+اگر بخواهید helperها عمداً استفاده نشوند:
+
+```bash
+make prediction-train \
+  PREDICTION_SOURCE=terraclimate \
+  PREDICTION_SCALE=6 \
+  PREDICTION_METHOD=random_forest \
+  PREDICTION_USE_HELPERS=no
 ```
 
 برای اجرای smoke test سبک:
@@ -636,8 +725,8 @@ data/prediction/models
 ساختار معمول:
 
 ```text
-data/prediction/models/<model_key>.pt
-data/prediction/models/<model_key>_<timestamp>.pt
+data/prediction/models/<model_key>.pt|pkl|json
+data/prediction/models/<model_key>_<timestamp>.pt|pkl|json
 ```
 
 علاوه بر فایل مدل، forecast و evaluation هم در دیتابیس ذخیره می‌شود.
@@ -718,6 +807,37 @@ docker compose -f docker-compose.dev.yml exec backend \
   python /app/backend/scripts/precompute_trends.py
 ```
 
+نکته مهم:
+
+1. workflow پیش‌بینی (`prediction-train` و `prediction-monthly-update`) خودش trend جدید در `trend_stats` تولید نمی‌کند.
+2. در `prediction-monthly-update` مرحله import با `--skip-trends` اجرا می‌شود تا workflow ماهانه سبک‌تر بماند.
+3. اگر بعد از import داده‌های جدید بخواهید trendهای observed هم تازه شوند، `make precompute-trends` را جداگانه اجرا کنید.
+
+## 33.1. داده‌های ENSO را دقیقاً از کجا دانلود کنم؟
+
+منبع پیش‌فرض پروژه این URL رسمی NOAA PSL است:
+
+```text
+https://psl.noaa.gov/data/correlation/nina34.data
+```
+
+اگر بخواهید پروژه خودش دانلود کند، کافی است `--enso-file` را ندهید.
+
+اگر بخواهید فایل را دستی دانلود و نگهداری کنید:
+
+1. محتوای همین URL را بگیرید.
+2. آن را به CSV یا Parquet با ستون‌های `date` و `enso_nino34` تبدیل کنید.
+3. سپس در دستور predictor از `--enso-file` استفاده کنید.
+
+نمونه:
+
+```bash
+make prediction-build-predictors \
+  PREDICTION_SOURCE=terraclimate \
+  PREDICTION_INPUT="/datasets/TerraClimate" \
+  PREDICTION_ENSO_FILE="/datasets/climate_indices/enso_nino34.csv"
+```
+
 ## 34. اگر بخواهیم سرویس‌ها را متوقف کنیم
 
 برای محیط توسعه:
@@ -760,3 +880,291 @@ make downv
 6. آیا برای prediction، فایل `monthly_predictors.parquet` در مسیر درست ساخته شده است؟
 
 اگر بخواهید، در مرحله بعدی می‌توانم همین فایل را به `README.md` لینک کنم یا یک نسخه کوتاه‌تر عملیاتی برای تیم اجرا هم از روی آن بسازم.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+قبل از شروع این را بدان:
+- `make downv` دیتابیس Docker را کامل پاک می‌کند.
+- اگر پوشه‌های generated داخل پروژه را هم پاک کنی، خروجی‌های قبلی pipeline و predictorها هم از بین می‌روند.
+- داده‌های خام داخل `DATASETS_ROOT` را پاک نکن، مگر این‌که واقعاً بخواهی از صفر مطلق حتی بدون raw data شروع کنی.
+
+**مرحله 1: تنظیم `.env`**
+فایل `.env` باید حداقل این‌ها را درست داشته باشد:
+- `DATASETS_ROOT`
+- `SPI_CACHE_ROOT`
+
+نمونه:
+```env
+DATASETS_ROOT=F:\Datasets
+SPI_CACHE_ROOT=F:\Datasets\DroughtCache\polygon_spi
+```
+
+اگر روی ویندوز هستی، مطمئن شو آن درایوها در Docker Desktop share شده‌اند.
+
+**مرحله 2: خاموش‌کردن و پاک‌کردن دیتابیس**
+از ریشه پروژه اجرا کن:
+
+```powershell
+make dev-down
+make downv
+```
+
+اگر `make` نداری:
+```powershell
+docker compose -f docker-compose.dev.yml down
+docker compose down -v
+```
+
+این مرحله دیتابیس و volumeهایش را پاک می‌کند.
+
+**مرحله 3: پاک‌کردن خروجی‌های تولیدشده داخل پروژه**
+اگر می‌خواهی generated data و predictorها و model artifactها هم پاک شوند، این پوشه‌ها را پاک کن:
+
+```powershell
+Remove-Item -Recurse -Force .\data\import\*
+Remove-Item -Recurse -Force .\data\prediction\features\*
+Remove-Item -Recurse -Force .\data\prediction\models\*
+```
+
+اگر بعضی پوشه‌ها وجود نداشتند، اشکال ندارد.
+
+اگر می‌خواهی cache پهنه‌ای را هم صفر کنی و `SPI_CACHE_ROOT` روی سیستم‌ات مسیر واقعی است، پوشه cache همان مسیر را هم دستی خالی کن.
+
+**مرحله 4: بالا آوردن سرویس‌ها**
+```powershell
+make dev
+```
+
+بعد این‌ها را چک کن:
+- فرانت: `http://localhost:8080`
+- بک‌اند: `http://localhost:8000/health`
+- Swagger: `http://localhost:8000/docs`
+
+**مرحله 5: اول فقط ایستگاهی را اضافه کن**
+فایل خام ایستگاهی باید اینجا باشد:
+```text
+<DATASETS_ROOT>\RazaviKhorasanStations.csv
+```
+
+اول discovery:
+```powershell
+make station-spi-discover
+```
+
+بعد generate:
+```powershell
+make station-spi-generate
+```
+
+بعد import:
+```powershell
+make station-spi-import
+```
+
+بعد trend observed:
+```powershell
+make precompute-trends
+```
+
+نکته:
+- برای station prediction نداریم.
+- trend فقط observed است.
+
+**مرحله 6: حالا sourceهای پهنه‌ای را یکی‌یکی اضافه کن**
+پیشنهاد من این ترتیب است:
+1. `terraclimate`
+2. `agera5`
+3. `fldas2`
+
+برای هر source این چرخه را تکرار کن.
+
+**مرحله 6.1: Terraclimate**
+ورودی‌ها:
+- مرزها: `<DATASETS_ROOT>\geoBoundaries`
+- داده بارش/NetCDFهای source
+
+اول discovery:
+```powershell
+make spi-discover SPI_SOURCE=terraclimate
+```
+
+اگر خواستی scale مشخص:
+```powershell
+make spi-discover SPI_SOURCE=terraclimate SPI_SCALE=3
+```
+
+بعد generate:
+```powershell
+make spi-generate SPI_SOURCE=terraclimate
+```
+
+بعد import:
+```powershell
+make spi-import
+```
+
+بعد trend:
+```powershell
+make precompute-trends
+```
+
+**مرحله 6.2: AgERA5**
+```powershell
+make spi-discover SPI_SOURCE=agera5
+make spi-generate SPI_SOURCE=agera5
+make spi-import
+make precompute-trends
+```
+
+**مرحله 6.3: FLDAS2**
+```powershell
+make spi-discover SPI_SOURCE=fldas2
+make spi-generate SPI_SOURCE=fldas2
+make spi-import
+make precompute-trends
+```
+
+**مرحله 7: بعد از هر import این‌ها را چک کن**
+```powershell
+curl http://localhost:8000/datasets
+curl http://localhost:8000/meta?level=<dataset_key>
+```
+
+و روی داشبورد:
+- dataset باز می‌شود؟
+- نقشه می‌آید؟
+- trend observed نمایش دارد؟
+
+**مرحله 8: predictorهای prediction را بساز**
+این بخش فقط برای datasetهای غیرایستگاهی است.
+
+بهترین روش این است که برای هر source یک config جدا داشته باشی. بعد برای هر source اجرا کن.
+
+مثلاً برای `terraclimate`:
+```powershell
+make prediction-build-predictors PREDICTION_SOURCE=terraclimate PREDICTOR_CONFIG="/app/backend/scripts/prediction/predictor_config.terraclimate.json"
+```
+
+برای `agera5`:
+```powershell
+make prediction-build-predictors PREDICTION_SOURCE=agera5 PREDICTOR_CONFIG="/app/backend/scripts/prediction/predictor_config.agera5.json"
+```
+
+برای `fldas2`:
+```powershell
+make prediction-build-predictors PREDICTION_SOURCE=fldas2 PREDICTOR_CONFIG="/app/backend/scripts/prediction/predictor_config.fldas2.json"
+```
+
+اگر `ENSO` را محلی داری:
+```powershell
+... PREDICTION_ENSO_FILE="/datasets/climate_indices/enso_nino34.csv"
+```
+
+**مرحله 9: مدل‌های prediction را train کن**
+پیشنهاد می‌کنم اول smoke test، بعد train واقعی.
+
+نمونه برای `terraclimate`:
+```powershell
+make prediction-train-smoke PREDICTION_SOURCE=terraclimate PREDICTION_SCALE=3
+make prediction-train PREDICTION_SOURCE=terraclimate PREDICTION_SCALE=3
+```
+
+برای چند method:
+```powershell
+make prediction-train PREDICTION_SOURCE=terraclimate PREDICTION_SCALE=3 PREDICTION_METHOD=lstm_attention
+make prediction-train PREDICTION_SOURCE=terraclimate PREDICTION_SCALE=3 PREDICTION_METHOD=random_forest
+make prediction-train PREDICTION_SOURCE=terraclimate PREDICTION_SCALE=3 PREDICTION_METHOD=xgboost
+```
+
+همین را برای `agera5` و `fldas2` هم تکرار کن.
+
+**مرحله 10: prediction را در داشبورد چک کن**
+بعد از train:
+- بخش `Prediction system` باید ظاهر شود.
+- method selector باید دیده شود.
+- `Uncertainty band` selector هم برای مدل‌های جدید باید دیده شود.
+- اگر forecast نباشد، trend forecast و uncertainty نباید نمایش داده شود.
+
+**مرحله 11: اگر بخواهی یک workflow تمیز و مرحله‌ای داشته باشی**
+من این ترتیب را پیشنهاد می‌کنم:
+
+1. پاک‌سازی کامل
+2. `make dev`
+3. station generate/import/trend
+4. terraclimate generate/import/trend
+5. terraclimate predictors
+6. terraclimate prediction train
+7. agera5 generate/import/trend
+8. agera5 predictors
+9. agera5 prediction train
+10. fldas2 generate/import/trend
+11. fldas2 predictors
+12. fldas2 prediction train
+13. بررسی نهایی داشبورد
+
+**چک‌لیست نهایی**
+اگر جایی چیزی نمایش نداد، این‌ها را چک کن:
+- آیا dataset واقعاً import شده؟
+- آیا `make precompute-trends` بعد از import اجرا شده؟
+- آیا predictor parquet ساخته شده؟
+- آیا prediction train برای همان `source + scale/index` اجرا شده؟
+- آیا dataset ایستگاهی را اشتباهی برای prediction چک نمی‌کنی؟
+- آیا forecastهای جدید بعد از تغییر uncertainty/retrain دوباره ساخته شده‌اند؟

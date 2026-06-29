@@ -101,8 +101,8 @@ def trend_payload(row: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
-def prediction_overview_payload(level: str, index: str, month: str) -> dict[str, Any] | None:
-    values_by_feature = fetch_prediction_map_values(dataset_key=level, index=index, yyyymm=month)
+def prediction_overview_payload(level: str, index: str, month: str, method: str | None = None) -> dict[str, Any] | None:
+    values_by_feature = fetch_prediction_map_values(dataset_key=level, index=index, yyyymm=month, method=method)
     values = [v for v in values_by_feature.values() if v is not None]
     if not values:
         return None
@@ -234,13 +234,14 @@ async def get_mapdata(
     level: str = "station",
     date: str = "2020-01",
     index: str = "spi3",
+    method: str | None = None,
     bbox: str | None = None,
     limit: int = settings.map_limit_default,
     offset: int = 0,
 ):
     bbox_key = rounded_bbox_key(bbox)
     limit = max(1, min(limit, settings.map_limit_max))
-    key = f"api:map:{level}:{index}:{date}:{bbox_key}:{limit}:{offset}"
+    key = f"api:map:{level}:{index}:{method or 'auto'}:{date}:{bbox_key}:{limit}:{offset}"
 
     def _builder():
         feature_collection = fetch_features_geojson(
@@ -262,7 +263,7 @@ async def get_mapdata(
             index=index,
             trends_by_feature_id=trends,
         )
-        prediction_values = fetch_prediction_map_values(dataset_key=level, index=index, yyyymm=date)
+        prediction_values = fetch_prediction_map_values(dataset_key=level, index=index, yyyymm=date, method=method)
         if prediction_values:
             for feature in feature_collection.get("features", []):
                 props = feature.setdefault("properties", {})
@@ -284,12 +285,12 @@ async def get_mapdata(
 
 
 @app.get("/overview")
-async def overview(level: str = "station", index: str = "spi3", date: str = "2020-01"):
-    key = f"api:overview:{level}:{index}:{date}"
+async def overview(level: str = "station", index: str = "spi3", date: str = "2020-01", method: str | None = None):
+    key = f"api:overview:{level}:{index}:{method or 'auto'}:{date}"
     try:
         return await run_cached(
             key,
-            lambda: prediction_overview_payload(level, index, date)
+            lambda: prediction_overview_payload(level, index, date, method)
             or fetch_overview_counts(dataset_key=level, index=index, yyyymm=date),
             settings.cache_ttl_short_seconds,
         )
@@ -325,12 +326,12 @@ async def get_timeseries(
 
 
 @app.get("/prediction/summary")
-async def prediction_summary(level: str = "station", index: str = "spi3"):
-    key = f"api:prediction:summary:{level}:{index}"
+async def prediction_summary(level: str = "station", index: str = "spi3", method: str | None = None):
+    key = f"api:prediction:summary:{level}:{index}:{method or 'auto'}"
     try:
         return await run_cached(
             key,
-            lambda: fetch_prediction_summary(dataset_key=level, index=index),
+            lambda: fetch_prediction_summary(dataset_key=level, index=index, method=method),
             settings.cache_ttl_medium_seconds,
         )
     except ValueError as exc:
@@ -340,12 +341,12 @@ async def prediction_summary(level: str = "station", index: str = "spi3"):
 
 
 @app.get("/prediction/forecast")
-async def prediction_forecast(region_id: str, level: str = "station", index: str = "spi3"):
-    key = f"api:prediction:forecast:{level}:{index}:{region_id}"
+async def prediction_forecast(region_id: str, level: str = "station", index: str = "spi3", method: str | None = None):
+    key = f"api:prediction:forecast:{level}:{index}:{method or 'auto'}:{region_id}"
     try:
         return await run_cached(
             key,
-            lambda: fetch_prediction_forecast(dataset_key=level, feature_id=region_id, index=index),
+            lambda: fetch_prediction_forecast(dataset_key=level, feature_id=region_id, index=index, method=method),
             settings.cache_ttl_medium_seconds,
         )
     except ValueError as exc:

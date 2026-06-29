@@ -1,0 +1,32 @@
+{
+  "source": "agera5",
+  "use_helpers": "yes",
+  "output_root": "data/prediction/features",
+  "bbox": "56.0,33.0,62.5,38.5",
+  "baseline_start": "1981-01-01",
+  "baseline_end": "2010-12-31",
+  "enso_file": "/datasets/enso_nino34.csv",
+  "helpers": [
+      {
+      "name": "precipitation",
+      "enabled": true,
+      "input": ["/datasets/AgERA5/precipitation"],
+      "variable": "precipitation",
+      "output": "precipitation"
+    },
+    {
+      "name": "temperature",
+      "enabled": true,
+      "input": ["/datasets/AgERA5/temperature"],
+      "variable": "temperature",
+      "output": "temperature"
+    },
+    {
+      "name": "dewpoint",
+      "enabled": true,
+      "input": ["/datasets/AgERA5/dewpoint"],
+      "variable": "dewpoint",
+      "output": "dewpoint"
+    }
+  ]
+}

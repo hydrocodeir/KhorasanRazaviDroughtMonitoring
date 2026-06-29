@@ -5,6 +5,10 @@
   "source_title": "AgERA5",
   "boundary_key": "administrative_razavikhorasan_county",
   "boundary_title": "Administrative / RazaviKhorasan / County",
+  "scale": 3,
+  "available_indices": [
+    "spi3"
+  ],
   "variable": "Precipitation_Flux",
   "input_units": "mm d-1",
   "spatial_method": "exact polygon-cell intersection; spherical-area weighted mean precipitation",

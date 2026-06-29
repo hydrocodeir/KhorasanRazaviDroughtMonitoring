@@ -12,6 +12,9 @@ STATION_SPI_SCALE_ARGS = $(if $(STATION_SPI_SCALE),--scale $(STATION_SPI_SCALE),
 PREDICTION_SELECT_ARGS = $(if $(PREDICTION_SOURCE),--source $(PREDICTION_SOURCE),) $(if $(PREDICTION_DATASET),--dataset $(PREDICTION_DATASET),) $(if $(PREDICTION_INDEX),--index $(PREDICTION_INDEX),) $(if $(PREDICTION_SCALE),--scale $(PREDICTION_SCALE),)
 PREDICTION_INPUT_ARGS = $(if $(PREDICTION_INPUT),--input $(PREDICTION_INPUT),)
 PREDICTION_ENSO_ARG = $(if $(PREDICTION_ENSO_FILE),--enso-file $(PREDICTION_ENSO_FILE),)
+PREDICTION_METHOD_ARGS = $(if $(PREDICTION_METHOD),--method $(PREDICTION_METHOD),)
+PREDICTION_USE_HELPERS_ARG = $(if $(PREDICTION_USE_HELPERS),--use-helpers $(PREDICTION_USE_HELPERS),)
+PREDICTOR_CONFIG_ARG = $(if $(PREDICTOR_CONFIG),--config $(PREDICTOR_CONFIG),)
 STATION_SPI_DATASET = $(if $(STATION_SPI_DATASET_KEY),$(STATION_SPI_DATASET_KEY),$(if $(STATION_SPI_SCALE),razavi_khorasan_station_spi$(STATION_SPI_SCALE),razavi_khorasan_station_spi3))
 
 PROD_COMPOSE = docker compose --env-file .env.prod -f docker-compose.prod.yml
@@ -68,28 +71,28 @@ spi-import:
 	docker compose -f docker-compose.dev.yml exec backend python /app/import_data.py --generated-only --replace-dataset --skip-trends
 
 prediction-build-predictors:
-	docker compose -f docker-compose.dev.yml exec backend python -m scripts.prediction.download_predictors $(if $(PREDICTION_SOURCE),--source $(PREDICTION_SOURCE),--source terraclimate) $(PREDICTION_INPUT_ARGS) $(PREDICTION_ENSO_ARG)
+	docker compose -f docker-compose.dev.yml exec backend python -m scripts.prediction.download_predictors $(if $(PREDICTION_SOURCE),--source $(PREDICTION_SOURCE),--source terraclimate) $(PREDICTION_INPUT_ARGS) $(PREDICTION_ENSO_ARG) $(PREDICTOR_CONFIG_ARG) $(PREDICTION_USE_HELPERS_ARG)
 
 prediction-download-terraclimate: prediction-build-predictors
 
 prediction-train:
-	docker compose -f docker-compose.dev.yml exec backend python -m scripts.prediction.train_lstm_attention $(PREDICTION_SELECT_ARGS)
+	docker compose -f docker-compose.dev.yml exec backend python -m scripts.prediction.train_prediction_models $(PREDICTION_SELECT_ARGS) $(PREDICTION_METHOD_ARGS) $(PREDICTION_USE_HELPERS_ARG)
 
 prediction-train-smoke:
-	docker compose -f docker-compose.dev.yml exec backend python -m scripts.prediction.train_lstm_attention --epochs 1 --final-epochs 1 --batch-size 64 $(if $(PREDICTION_SOURCE),--source $(PREDICTION_SOURCE),--source terraclimate) $(if $(PREDICTION_DATASET),--dataset $(PREDICTION_DATASET),) $(if $(PREDICTION_INDEX),--index $(PREDICTION_INDEX),$(if $(PREDICTION_SCALE),--scale $(PREDICTION_SCALE),--index spi3))
+	docker compose -f docker-compose.dev.yml exec backend python -m scripts.prediction.train_prediction_models --epochs 1 --final-epochs 1 --batch-size 64 $(if $(PREDICTION_SOURCE),--source $(PREDICTION_SOURCE),--source terraclimate) $(if $(PREDICTION_DATASET),--dataset $(PREDICTION_DATASET),) $(if $(PREDICTION_INDEX),--index $(PREDICTION_INDEX),$(if $(PREDICTION_SCALE),--scale $(PREDICTION_SCALE),--index spi3)) $(PREDICTION_METHOD_ARGS) $(PREDICTION_USE_HELPERS_ARG)
 
 prediction-self-learn: prediction-train
 
 prediction-monthly-update:
-	docker compose -f docker-compose.dev.yml exec backend python -m scripts.prediction.monthly_update $(PREDICTION_SELECT_ARGS) $(if $(PREDICTION_INPUT),--predictor-input $(PREDICTION_INPUT),) $(PREDICTION_ENSO_ARG)
+	docker compose -f docker-compose.dev.yml exec backend python -m scripts.prediction.monthly_update $(PREDICTION_SELECT_ARGS) $(PREDICTION_METHOD_ARGS) $(PREDICTION_USE_HELPERS_ARG) $(if $(PREDICTION_INPUT),--predictor-input $(PREDICTION_INPUT),) $(PREDICTION_ENSO_ARG) $(PREDICTOR_CONFIG_ARG)
 
 prod-prediction-train:
-	$(PROD_COMPOSE) exec backend python -m scripts.prediction.train_lstm_attention $(PREDICTION_SELECT_ARGS)
+	$(PROD_COMPOSE) exec backend python -m scripts.prediction.train_prediction_models $(PREDICTION_SELECT_ARGS) $(PREDICTION_METHOD_ARGS) $(PREDICTION_USE_HELPERS_ARG)
 
 prod-prediction-self-learn: prod-prediction-train
 
 prod-prediction-monthly-update:
-	$(PROD_COMPOSE) exec backend python -m scripts.prediction.monthly_update $(PREDICTION_SELECT_ARGS) $(if $(PREDICTION_INPUT),--predictor-input $(PREDICTION_INPUT),) $(PREDICTION_ENSO_ARG)
+	$(PROD_COMPOSE) exec backend python -m scripts.prediction.monthly_update $(PREDICTION_SELECT_ARGS) $(PREDICTION_METHOD_ARGS) $(PREDICTION_USE_HELPERS_ARG) $(if $(PREDICTION_INPUT),--predictor-input $(PREDICTION_INPUT),) $(PREDICTION_ENSO_ARG) $(PREDICTOR_CONFIG_ARG)
 
 $(SPI_HOST_STAMP): $(SPI_HOST_REQUIREMENTS)
 	uv venv --python python $(SPI_HOST_VENV)

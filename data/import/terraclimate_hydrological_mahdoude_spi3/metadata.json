@@ -5,6 +5,10 @@
   "source_title": "TerraClimate",
   "boundary_key": "hydrological_mahdoude",
   "boundary_title": "Hydrological / Mahdoude",
+  "scale": 3,
+  "available_indices": [
+    "spi3"
+  ],
   "variable": "ppt",
   "input_units": "mm",
   "spatial_method": "exact polygon-cell intersection; spherical-area weighted mean precipitation",

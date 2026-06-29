@@ -12,6 +12,7 @@ alone, but these files enable the full multivariate LSTM+attention method.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -24,6 +25,10 @@ ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUTPUT_ROOT = ROOT / "data" / "prediction" / "features"
 DEFAULT_BBOX = (56.0, 33.0, 62.5, 38.5)  # lon_min, lat_min, lon_max, lat_max
 ENSO_URL = "https://psl.noaa.gov/data/correlation/nina34.data"
+
+
+def log_progress(message: str) -> None:
+    print(message, flush=True)
 
 
 def month_start(values: pd.Series) -> pd.Series:
@@ -86,6 +91,81 @@ def load_enso(enso_file: Path | None) -> pd.DataFrame:
     return fetch_enso()
 
 
+def open_netcdf_collection(files: list[Path]) -> xr.Dataset:
+    """Open one or more NetCDF files without requiring dask.
+
+    ``xarray.open_mfdataset`` expects a chunk manager such as dask. In this
+    project we want predictor preparation to work even in lean environments,
+    so we open files eagerly and combine them ourselves.
+    """
+
+    ordered = [Path(path) for path in files]
+    if not ordered:
+        raise RuntimeError("No NetCDF files were provided.")
+    datasets = [xr.open_dataset(path) for path in ordered]
+    if len(datasets) == 1:
+        return datasets[0]
+    try:
+        return xr.combine_by_coords(datasets, combine_attrs="override")
+    except Exception:
+        return xr.combine_nested(datasets, concat_dim="time", combine_attrs="override")
+
+
+def dataset_series_from_files(
+    *,
+    files: list[Path],
+    variable: str | None,
+    output_name: str,
+    bbox: tuple[float, float, float, float],
+    progress_label: str | None = None,
+    progress_start: int = 0,
+    progress_total: int | None = None,
+) -> pd.DataFrame:
+    """Reduce NetCDF inputs to a monthly series with low memory overhead.
+
+    Instead of opening a full multi-file dataset into memory, this function
+    processes each file independently, extracts the area-weighted mean, and
+    concatenates only the compact time series.
+    """
+
+    if not files:
+        raise RuntimeError("No NetCDF files were provided.")
+
+    parts: list[pd.DataFrame] = []
+    ordered = sorted(files)
+    total = int(progress_total or len(ordered) or 1)
+    for idx, path in enumerate(ordered, start=1):
+        if progress_label:
+            absolute_step = progress_start + idx
+            pct = (100.0 * absolute_step) / total
+            log_progress(
+                f"[progress] {progress_label}: file {idx}/{len(ordered)} "
+                f"({path.name}) | overall {absolute_step}/{total} = {pct:0.1f}%"
+            )
+        ds = xr.open_dataset(path)
+        data_var = variable or (output_name if output_name in ds.data_vars else next(iter(ds.data_vars)))
+        if data_var not in ds:
+            raise ValueError(f"Variable {data_var!r} not found in {path.name!r}.")
+        series = area_weighted_mean(ds[data_var], bbox).to_dataframe(name=output_name).reset_index()
+        time_col = "time" if "time" in series.columns else "date"
+        series["date"] = month_start(series[time_col])
+        parts.append(series[["date", output_name]])
+        try:
+            ds.close()
+        except Exception:
+            pass
+
+    frame = pd.concat(parts, ignore_index=True)
+    frame = frame.groupby("date", as_index=False)[output_name].mean()
+    if progress_label:
+        log_progress(
+            f"[done] {progress_label}: monthly rows={len(frame):,}, "
+            f"min={frame['date'].min().strftime('%Y-%m') if not frame.empty else 'n/a'}, "
+            f"max={frame['date'].max().strftime('%Y-%m') if not frame.empty else 'n/a'}"
+        )
+    return frame.sort_values("date")
+
+
 def prepare_terraclimate(
     *,
     input_files: list[Path],
@@ -112,12 +192,12 @@ def prepare_terraclimate(
                 f"Missing TerraClimate files for variable {var!r}. Expected files like TerraClimate_{var}_YYYY.nc."
             )
         print(f"[terraclimate] preparing {var} from {len(matches)} file(s)")
-        ds = xr.open_mfdataset([str(path) for path in sorted(matches)], combine="by_coords")
-        data_var = var if var in ds.data_vars else next(iter(ds.data_vars))
-        series = area_weighted_mean(ds[data_var], bbox).to_dataframe(name=out_col).reset_index()
-        time_col = "time" if "time" in series.columns else "date"
-        series["date"] = month_start(series[time_col])
-        series = series.groupby("date", as_index=False)[out_col].mean()
+        series = dataset_series_from_files(
+            files=sorted(matches),
+            variable=var,
+            output_name=out_col,
+            bbox=bbox,
+        )
         frame = series if frame is None else frame.merge(series, on="date", how="outer")
     if frame is None:
         raise RuntimeError("No TerraClimate predictors were prepared.")
@@ -167,15 +247,14 @@ def prepare_from_netcdf(
 
     if not input_files:
         raise RuntimeError(f"No NetCDF files passed for {source_key}.")
-    ds = xr.open_mfdataset([str(path) for path in input_files], combine="by_coords")
     frame: pd.DataFrame | None = None
     for nc_var, out_name in variable_map.items():
-        if nc_var not in ds:
-            raise ValueError(f"{nc_var!r} not found in {source_key} files")
-        series = area_weighted_mean(ds[nc_var], bbox).to_dataframe(name=out_name).reset_index()
-        time_col = "time" if "time" in series.columns else "date"
-        series["date"] = month_start(series[time_col])
-        series = series.groupby("date", as_index=False)[out_name].mean()
+        series = dataset_series_from_files(
+            files=input_files,
+            variable=nc_var,
+            output_name=out_name,
+            bbox=bbox,
+        )
         frame = series if frame is None else frame.merge(series, on="date", how="outer")
     if frame is None:
         raise RuntimeError(f"No variables prepared for {source_key}.")
@@ -229,6 +308,119 @@ def expand_inputs(values: list[Path] | None) -> list[Path]:
     return list(unique.values())
 
 
+def helper_frame_from_spec(
+    *,
+    helper_name: str,
+    input_values: list[Path],
+    variable: str | None,
+    output_name: str,
+    bbox: tuple[float, float, float, float],
+    progress_label: str | None = None,
+    progress_start: int = 0,
+    progress_total: int | None = None,
+) -> pd.DataFrame:
+    files = expand_inputs(input_values)
+    if not files:
+        raise RuntimeError(f"No input files found for helper {helper_name!r}.")
+    return dataset_series_from_files(
+        files=files,
+        variable=variable,
+        output_name=output_name,
+        bbox=bbox,
+        progress_label=progress_label,
+        progress_start=progress_start,
+        progress_total=progress_total,
+    )
+
+
+def prepare_from_config(config_path: Path, *, enso_override: Path | None = None) -> Path:
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    source_key = str(raw.get("source") or "").strip().lower()
+    if not source_key:
+        raise ValueError("predictor config must define 'source'")
+    use_helpers = str(raw.get("use_helpers", "yes")).strip().lower() not in {"no", "false", "0"}
+    if not use_helpers:
+        print(f"[{source_key}] helper predictors disabled in config; skipping build")
+        return Path(raw.get("output_root") or DEFAULT_OUTPUT_ROOT) / source_key / "monthly_predictors.parquet"
+
+    output_root = Path(raw.get("output_root") or DEFAULT_OUTPUT_ROOT)
+    bbox = parse_bbox(str(raw.get("bbox", ",".join(str(v) for v in DEFAULT_BBOX))))
+    baseline_start = str(raw.get("baseline_start") or "1981-01-01")
+    baseline_end = str(raw.get("baseline_end") or "2010-12-31")
+    enso_path = enso_override or (Path(raw["enso_file"]) if raw.get("enso_file") else None)
+    enso = load_enso(enso_path)
+    helper_specs = raw.get("helpers") or []
+    if not isinstance(helper_specs, list) or not helper_specs:
+        raise ValueError("predictor config must contain a non-empty 'helpers' list")
+    enabled_specs = [
+        spec
+        for spec in helper_specs
+        if isinstance(spec, dict) and str(spec.get("enabled", "true")).strip().lower() not in {"no", "false", "0"}
+    ]
+    total_files = 0
+    helper_inputs_cache: list[tuple[dict[str, object], list[Path]]] = []
+    for spec in enabled_specs:
+        inputs = spec.get("input") or spec.get("inputs") or []
+        if isinstance(inputs, (str, Path)):
+            inputs = [inputs]
+        input_values = [Path(str(item)) for item in inputs]
+        files = expand_inputs(input_values)
+        helper_inputs_cache.append((spec, files))
+        total_files += len(files)
+    total_files = max(total_files, 1)
+    log_progress(
+        f"[start] source={source_key} | helpers={len(enabled_specs)} | "
+        f"files={total_files} | baseline={baseline_start}..{baseline_end}"
+    )
+
+    frame: pd.DataFrame | None = None
+    processed_files = 0
+    for helper_idx, (spec, files) in enumerate(helper_inputs_cache, start=1):
+        helper_name = str(spec.get("name") or spec.get("output") or "").strip()
+        output_name = str(spec.get("output") or helper_name).strip()
+        if not files:
+            raise RuntimeError(f"No input files found for helper {helper_name!r}.")
+        log_progress(
+            f"[helper {helper_idx}/{len(enabled_specs)}] {helper_name} -> {output_name} | files={len(files)}"
+        )
+        helper_frame = helper_frame_from_spec(
+            helper_name=helper_name or output_name,
+            input_values=files,
+            variable=str(spec["variable"]).strip() if spec.get("variable") else None,
+            output_name=output_name,
+            bbox=bbox,
+            progress_label=f"{source_key}/{helper_name}",
+            progress_start=processed_files,
+            progress_total=total_files,
+        )
+        processed_files += len(files)
+        frame = helper_frame if frame is None else frame.merge(helper_frame, on="date", how="outer")
+        log_progress(
+            f"[merge] {helper_name}: merged columns={len(frame.columns)} | rows={len(frame):,} | "
+            f"overall {processed_files}/{total_files} = {(100.0 * processed_files / total_files):0.1f}%"
+        )
+
+    if frame is None or frame.empty:
+        raise RuntimeError(f"No helper predictors were prepared for {source_key}.")
+
+    numeric_cols = [col for col in frame.columns if col != "date"]
+    if "tmean" not in frame.columns and {"tmin", "tmax"}.issubset(frame.columns):
+        frame["tmean"] = (pd.to_numeric(frame["tmin"], errors="coerce") + pd.to_numeric(frame["tmax"], errors="coerce")) / 2.0
+        numeric_cols = [col for col in frame.columns if col != "date"]
+    for col in numeric_cols:
+        frame[f"{col}_anom"] = monthly_anomaly(frame[col], frame["date"], baseline_start, baseline_end)
+    keep_cols = ["date", *[col for col in frame.columns if col.endswith("_anom")]]
+    frame = frame[keep_cols].merge(enso, on="date", how="left")
+    frame["source_key"] = source_key
+    out_dir = output_root / source_key
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "monthly_predictors.parquet"
+    ordered = ["date", "source_key", *[c for c in frame.columns if c not in {"date", "source_key"}]]
+    frame[ordered].to_parquet(out_path, index=False)
+    log_progress(f"[{source_key}] wrote {out_path}")
+    return out_path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare monthly prediction predictors from local inputs")
     parser.add_argument("--source", choices=["terraclimate", "agera5", "fldas2"], required=True)
@@ -238,12 +430,21 @@ def main() -> None:
     parser.add_argument("--baseline-end", default="2010-12-31")
     parser.add_argument("--input", action="append", type=Path, help="Local NetCDF file, glob, or directory")
     parser.add_argument("--enso-file", type=Path, help="Optional local CSV/Parquet with date and enso_nino34 columns")
+    parser.add_argument("--config", type=Path, help="Optional JSON config with separate helper folders and enabled flags")
+    parser.add_argument("--use-helpers", choices=["yes", "no"], default="yes", help="Whether helper predictors should be built")
     parser.add_argument(
         "--var-map",
         action="append",
         help="NetCDF variable mapping, repeatable. Example: Rainf_tavg=precip",
     )
     args = parser.parse_args()
+
+    if args.use_helpers == "no":
+        print(f"[{args.source}] helper predictors disabled by CLI; skipping build")
+        return
+    if args.config:
+        prepare_from_config(args.config, enso_override=args.enso_file)
+        return
 
     output_root = Path(args.output_root)
     files = expand_inputs(args.input)

@@ -54,9 +54,10 @@ def _scale_template_from_legacy(value: str, scale: int) -> str:
     text = str(value or "").strip()
     if not text:
         return text
+    has_scale_token = bool(re.search(r"spi\d+\b", text, flags=re.IGNORECASE) or re.search(r"SPI-\d+\b", text))
     updated = re.sub(r"spi\d+\b", f"spi{scale}", text, flags=re.IGNORECASE)
     updated = re.sub(r"SPI-\d+\b", f"SPI-{scale}", updated)
-    if updated != text:
+    if has_scale_token:
         return updated
     return f"{text}_spi{scale}"
 

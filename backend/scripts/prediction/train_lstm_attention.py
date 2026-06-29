@@ -43,7 +43,7 @@ import sys
 
 sys.path.insert(0, str((ROOT / "backend").resolve()))
 from app.database import engine  # noqa: E402
-from app.datasets_store import get_available_indices, validate_index_name  # noqa: E402
+from app.datasets_store import _json_safe_float, get_available_indices, validate_index_name  # noqa: E402
 from app.prediction_store import ensure_prediction_tables  # noqa: E402
 from app.utils import drought_class  # noqa: E402
 
@@ -52,6 +52,14 @@ DEFAULT_FEATURE_ROOT = ROOT / "data" / "prediction" / "features"
 DEFAULT_ARTIFACT_ROOT = ROOT / "data" / "prediction" / "models"
 BASE_INPUT_COLUMNS = ["y", "y_lag_1", "y_lag_3", "y_lag_6", "month_sin", "month_cos"]
 HELPER_MIN_COVERAGE = 0.02
+METHOD_NAME = "lstm_attention"
+DEFAULT_INTERVAL_METHOD = "backtest_q90"
+INTERVAL_LABELS = {
+    "backtest_q90": "Backtest Q90",
+    "rmse_164": "RMSE x 1.64",
+    "historical_spread": "Historical Spread",
+    "sigma_model": "Sigma Model",
+}
 
 
 @dataclass(frozen=True)
@@ -113,8 +121,8 @@ def add_month(month: date, offset: int) -> date:
     return date(y, m, 1)
 
 
-def safe_model_key(source_key: str, index: str) -> str:
-    return f"{source_key}_{index}_lstm_attention".replace("-", "_").lower()
+def safe_model_key(source_key: str, index: str, method_name: str = METHOD_NAME) -> str:
+    return f"{source_key}_{index}_{method_name}".replace("-", "_").lower()
 
 
 def requested_prediction_indices(
@@ -194,7 +202,9 @@ def predictor_path(feature_root: Path, source_key: str) -> Path:
     return feature_root / source_key / "monthly_predictors.parquet"
 
 
-def load_predictors(feature_root: Path, source_key: str) -> pd.DataFrame:
+def load_predictors(feature_root: Path, source_key: str, *, use_helpers: bool = True) -> pd.DataFrame:
+    if not use_helpers:
+        return pd.DataFrame(columns=["date"])
     path = predictor_path(feature_root, source_key)
     if not path.exists():
         return pd.DataFrame(columns=["date"])
@@ -622,6 +632,67 @@ def lead_uncertainty_spreads(
     return spreads
 
 
+def historical_uncertainty_spreads(*, history: pd.DataFrame, horizon: int) -> dict[int, float]:
+    y = pd.to_numeric(history["y"], errors="coerce").dropna().to_numpy(dtype=float)
+    y_std = float(np.nanstd(y)) if len(y) else 1.0
+    if not np.isfinite(y_std) or y_std <= 1e-6:
+        y_std = 1.0
+    return {lead: max(float(y_std * (0.45 + (0.05 * lead))), 0.15) for lead in range(1, horizon + 1)}
+
+
+def rmse_uncertainty_spreads(
+    *,
+    dataset_backtest: pd.DataFrame,
+    pooled_backtest: pd.DataFrame,
+    history: pd.DataFrame,
+    horizon: int,
+) -> dict[int, float]:
+    fallback = historical_uncertainty_spreads(history=history, horizon=horizon)
+
+    def _spread_from(group: pd.DataFrame) -> float | None:
+        if group.empty:
+            return None
+        residual = pd.to_numeric(group["predicted"], errors="coerce") - pd.to_numeric(group["actual"], errors="coerce")
+        abs_residual = residual.abs().replace([np.inf, -np.inf], np.nan).dropna()
+        if len(abs_residual) >= 3:
+            rmse = float(math.sqrt(np.mean(np.square(abs_residual.to_numpy(dtype=float)))))
+            return max(1.64 * rmse, 0.15)
+        return None
+
+    spreads: dict[int, float] = {}
+    for lead in range(1, horizon + 1):
+        ds_group = dataset_backtest[dataset_backtest["lead_month"] == lead] if not dataset_backtest.empty else pd.DataFrame()
+        pooled_group = pooled_backtest[pooled_backtest["lead_month"] == lead] if not pooled_backtest.empty else pd.DataFrame()
+        spread = _spread_from(ds_group) or _spread_from(pooled_group) or fallback.get(lead, 0.15)
+        spreads[lead] = max(float(spread), 0.15)
+    return spreads
+
+
+def build_interval_payload(
+    *,
+    value: float | int | None,
+    lead_month: int,
+    interval_spreads: dict[str, dict[int, float]],
+    interval_labels: dict[str, str] | None = None,
+) -> dict[str, dict[str, float | str | None]]:
+    center = _json_safe_float(value)
+    if center is None:
+        return {}
+    labels = interval_labels or INTERVAL_LABELS
+    payload: dict[str, dict[str, float | str | None]] = {}
+    for method_name, spreads in interval_spreads.items():
+        spread = spreads.get(int(lead_month))
+        if spread is None or not np.isfinite(float(spread)):
+            continue
+        half_width = max(float(spread), 0.15)
+        payload[method_name] = {
+            "label": labels.get(method_name, method_name.replace("_", " ").title()),
+            "lower": center - half_width,
+            "upper": center + half_width,
+        }
+    return payload
+
+
 def safe_identifier(value: str) -> str:
     raw = str(value or "").strip().lower()
     if not raw or not all(ch.isalnum() or ch == "_" for ch in raw):
@@ -691,8 +762,72 @@ def capture_realized_feedback(conn: Any, *, dataset_key: str, index: str) -> int
     return int(result.rowcount or 0)
 
 
+def capture_realized_feedback_for_method(
+    conn: Any,
+    *,
+    dataset_key: str,
+    index: str,
+    method_name: str,
+) -> int:
+    table = f"ts_{safe_identifier(dataset_key)}"
+    idx = safe_identifier(index)
+    idx_sql = '"' + idx.replace('"', '') + '"'
+    result = conn.execute(
+        text(
+            f"""
+            INSERT INTO prediction_feedback (
+              dataset_key, index_name, method_name, model_key, feature_id,
+              issue_date, target_date, lead_month,
+              predicted_value, actual_value, error, absolute_error, squared_error,
+              learned_at
+            )
+            SELECT
+              pf.dataset_key,
+              pf.index_name,
+              pf.method_name,
+              dm.model_key,
+              pf.feature_id,
+              pf.issue_date,
+              pf.target_date,
+              pf.lead_month,
+              pf.value AS predicted_value,
+              ts.{idx_sql} AS actual_value,
+              pf.value - ts.{idx_sql} AS error,
+              ABS(pf.value - ts.{idx_sql}) AS absolute_error,
+              POWER(pf.value - ts.{idx_sql}, 2) AS squared_error,
+              NOW()
+            FROM prediction_forecasts pf
+            LEFT JOIN prediction_dataset_models dm
+              ON dm.dataset_key = pf.dataset_key
+             AND dm.index_name = pf.index_name
+             AND dm.method_name = pf.method_name
+            JOIN {table} ts
+              ON ts.feature_id = pf.feature_id
+             AND ts.date = pf.target_date
+            WHERE pf.dataset_key = :k
+              AND pf.index_name = :i
+              AND pf.method_name = :m
+              AND pf.value IS NOT NULL
+              AND ts.{idx_sql} IS NOT NULL
+            ON CONFLICT (dataset_key, index_name, method_name, feature_id, issue_date, target_date)
+            DO UPDATE SET
+              model_key = EXCLUDED.model_key,
+              predicted_value = EXCLUDED.predicted_value,
+              actual_value = EXCLUDED.actual_value,
+              error = EXCLUDED.error,
+              absolute_error = EXCLUDED.absolute_error,
+              squared_error = EXCLUDED.squared_error,
+              learned_at = NOW()
+            """
+        ),
+        {"k": dataset_key, "i": index, "m": method_name},
+    )
+    return int(result.rowcount or 0)
+
+
 def write_outputs(
     *,
+    method_name: str,
     model_key: str,
     source_key: str,
     index: str,
@@ -714,12 +849,12 @@ def write_outputs(
             text(
                 """
                 INSERT INTO prediction_models (
-                  model_key, source_key, index_name, input_window, horizon, status,
+                  model_key, method_name, source_key, index_name, input_window, horizon, status,
                   artifact_path, feature_columns, training_params, summary_metrics,
                   trained_at, updated_at
                 )
                 VALUES (
-                  :model_key, :source_key, :index_name, :input_window, :horizon, 'ready',
+                  :model_key, :method_name, :source_key, :index_name, :input_window, :horizon, 'ready',
                   :artifact_path, CAST(:feature_columns AS JSONB),
                   CAST(:training_params AS JSONB), CAST(:summary_metrics AS JSONB),
                   NOW(), NOW()
@@ -740,6 +875,7 @@ def write_outputs(
             ),
             {
                 "model_key": model_key,
+                "method_name": method_name,
                 "source_key": source_key,
                 "index_name": index,
                 "input_window": input_window,
@@ -754,11 +890,11 @@ def write_outputs(
             text(
                 """
                 INSERT INTO prediction_model_versions (
-                  version_key, model_key, artifact_path, trained_at,
+                  version_key, model_key, method_name, artifact_path, trained_at,
                   feature_columns, training_params, summary_metrics
                 )
                 VALUES (
-                  :version_key, :model_key, :artifact_path, NOW(),
+                  :version_key, :model_key, :method_name, :artifact_path, NOW(),
                   CAST(:feature_columns AS JSONB),
                   CAST(:training_params AS JSONB),
                   CAST(:summary_metrics AS JSONB)
@@ -774,6 +910,7 @@ def write_outputs(
             {
                 "version_key": version_key,
                 "model_key": model_key,
+                "method_name": method_name,
                 "artifact_path": str(versioned_artifact_path),
                 "feature_columns": json.dumps(feature_columns),
                 "training_params": json.dumps(training_params),
@@ -782,16 +919,21 @@ def write_outputs(
         )
 
         for dataset_key, forecast_rows in forecasts_by_dataset.items():
-            captured = capture_realized_feedback(conn, dataset_key=dataset_key, index=index)
+            captured = capture_realized_feedback_for_method(
+                conn,
+                dataset_key=dataset_key,
+                index=index,
+                method_name=method_name,
+            )
             if captured:
-                print(f"[{dataset_key}/{index}] captured realized forecast feedback: {captured:,} rows")
+                print(f"[{dataset_key}/{index}/{method_name}] captured realized forecast feedback: {captured:,} rows")
             conn.execute(
-                text("DELETE FROM prediction_forecasts WHERE dataset_key = :k AND index_name = :i"),
-                {"k": dataset_key, "i": index},
+                text("DELETE FROM prediction_forecasts WHERE dataset_key = :k AND index_name = :i AND method_name = :m"),
+                {"k": dataset_key, "i": index, "m": method_name},
             )
             conn.execute(
-                text("DELETE FROM prediction_evaluation WHERE dataset_key = :k AND index_name = :i"),
-                {"k": dataset_key, "i": index},
+                text("DELETE FROM prediction_evaluation WHERE dataset_key = :k AND index_name = :i AND method_name = :m"),
+                {"k": dataset_key, "i": index, "m": method_name},
             )
             if forecast_rows:
                 forecast_min = min(row["target_date"] for row in forecast_rows)
@@ -804,11 +946,11 @@ def write_outputs(
                 text(
                     """
                     INSERT INTO prediction_dataset_models (
-                      dataset_key, index_name, model_key, issue_date,
+                      dataset_key, index_name, method_name, model_key, issue_date,
                       forecast_min_date, forecast_max_date, updated_at
                     )
-                    VALUES (:k, :i, :m, :issue, :fmin, :fmax, NOW())
-                    ON CONFLICT (dataset_key, index_name) DO UPDATE
+                    VALUES (:k, :i, :method_name, :m, :issue, :fmin, :fmax, NOW())
+                    ON CONFLICT (dataset_key, index_name, method_name) DO UPDATE
                     SET model_key = EXCLUDED.model_key,
                         issue_date = EXCLUDED.issue_date,
                         forecast_min_date = EXCLUDED.forecast_min_date,
@@ -819,6 +961,7 @@ def write_outputs(
                 {
                     "k": dataset_key,
                     "i": index,
+                    "method_name": method_name,
                     "m": model_key,
                     "issue": issue_date,
                     "fmin": forecast_min,
@@ -830,16 +973,17 @@ def write_outputs(
                     text(
                         """
                         INSERT INTO prediction_forecasts (
-                          dataset_key, index_name, feature_id, issue_date,
-                          target_date, lead_month, value, lower_value, upper_value,
+                          dataset_key, index_name, method_name, feature_id, issue_date,
+                          target_date, lead_month, value, lower_value, upper_value, intervals,
                           updated_at
                         )
-                        VALUES (:k, :i, :fid, :issue, :target, :lead, :value, :lower, :upper, NOW())
+                        VALUES (:k, :i, :m, :fid, :issue, :target, :lead, :value, :lower, :upper, CAST(:intervals AS JSONB), NOW())
                         """
                     ),
                     {
                         "k": dataset_key,
                         "i": index,
+                        "m": method_name,
                         "fid": row["feature_id"],
                         "issue": issue_date,
                         "target": row["target_date"],
@@ -847,6 +991,7 @@ def write_outputs(
                         "value": row["value"],
                         "lower": row.get("lower"),
                         "upper": row.get("upper"),
+                        "intervals": json.dumps(row.get("intervals") or {}),
                     },
                 )
             for metric in eval_by_dataset.get(dataset_key, []):
@@ -854,12 +999,12 @@ def write_outputs(
                     text(
                         """
                         INSERT INTO prediction_evaluation (
-                          dataset_key, index_name, lead_month, mae, rmse, bias,
+                          dataset_key, index_name, method_name, lead_month, mae, rmse, bias,
                           r2, correlation, drought_class_accuracy, sample_count,
                           updated_at
                         )
                         VALUES (
-                          :k, :i, :lead, :mae, :rmse, :bias,
+                          :k, :i, :m, :lead, :mae, :rmse, :bias,
                           :r2, :corr, :acc, :n, NOW()
                         )
                         """
@@ -867,6 +1012,7 @@ def write_outputs(
                     {
                         "k": dataset_key,
                         "i": index,
+                        "m": method_name,
                         "lead": metric["lead_month"],
                         "mae": metric.get("mae"),
                         "rmse": metric.get("rmse"),
@@ -895,8 +1041,9 @@ def train_group(
     final_epochs: int,
     batch_size: int,
     learning_rate: float,
+    use_helpers: bool,
 ) -> None:
-    predictors = load_predictors(feature_root, source_key)
+    predictors = load_predictors(feature_root, source_key, use_helpers=use_helpers)
     climatology = predictor_climatology(predictors)
     frames: list[pd.DataFrame] = []
     dataset_frames: dict[str, pd.DataFrame] = {}
@@ -971,7 +1118,7 @@ def train_group(
         print(f"[{ds.key}/{index}] backtest rows={len(bt):,}")
 
     artifact_root.mkdir(parents=True, exist_ok=True)
-    model_key = safe_model_key(source_key, index)
+    model_key = safe_model_key(source_key, index, METHOD_NAME)
     version_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     version_key = f"{model_key}_{version_stamp}"
     artifact_path = artifact_root / f"{model_key}.pt"
@@ -1040,10 +1187,27 @@ def train_group(
             history=frame,
             horizon=horizon,
         )
+        rmse_spreads = rmse_uncertainty_spreads(
+            dataset_backtest=dataset_backtest,
+            pooled_backtest=pooled_backtest,
+            history=frame,
+            horizon=horizon,
+        )
+        historical_spreads = historical_uncertainty_spreads(history=frame, horizon=horizon)
+        interval_spreads = {
+            "backtest_q90": uncertainty_spreads,
+            "rmse_164": rmse_spreads,
+            "historical_spread": historical_spreads,
+        }
         for feature_id, group in frame.groupby("feature_id", sort=False):
             preds = recursive_forecast(final_model, group, feature_columns, scaler, input_window, horizon, climatology)
             for item in preds:
                 spread = uncertainty_spreads.get(int(item["lead_month"]), 0.15)
+                intervals = build_interval_payload(
+                    value=item["value"],
+                    lead_month=int(item["lead_month"]),
+                    interval_spreads=interval_spreads,
+                )
                 forecast_rows.append(
                     {
                         "feature_id": str(feature_id),
@@ -1052,6 +1216,7 @@ def train_group(
                         "value": item["value"],
                         "lower": item["value"] - spread,
                         "upper": item["value"] + spread,
+                        "intervals": intervals,
                     }
                 )
         forecasts_by_dataset[ds.key] = forecast_rows
@@ -1059,6 +1224,7 @@ def train_group(
 
     write_outputs(
         model_key=model_key,
+        method_name=METHOD_NAME,
         source_key=source_key,
         index=index,
         input_window=input_window,
@@ -1074,12 +1240,21 @@ def train_group(
             "learning_rate": learning_rate,
             "backtest_months": backtest_months,
             "adaptive_inputs": {
+                "use_helpers": use_helpers,
                 "base_columns": list(BASE_INPUT_COLUMNS),
                 "dataset_reports": feature_reports,
                 "pooled_feature_columns": feature_columns,
             },
             "uncertainty": {
-                "method": "lead-wise backtest absolute residual quantile with pooled and historical-spread fallback",
+                "method": "lead-wise residual-derived intervals with selectable display methods",
+                "default_interval_method": DEFAULT_INTERVAL_METHOD,
+                "available_interval_methods": ["backtest_q90", "rmse_164", "historical_spread"],
+                "interval_labels": {key: INTERVAL_LABELS[key] for key in ("backtest_q90", "rmse_164", "historical_spread")},
+                "interval_descriptions": {
+                    "backtest_q90": "Lead-wise absolute residual quantile with pooled and historical fallback.",
+                    "rmse_164": "Lead-wise RMSE-scaled interval using 1.64 x RMSE with fallback.",
+                    "historical_spread": "Historical target spread scaled by forecast lead.",
+                },
                 "residual_quantile": 0.90,
                 "fallback": "historical target standard deviation scaled by lead",
             },
@@ -1101,6 +1276,7 @@ def main() -> None:
     parser.add_argument("--scale", action="append", type=int, help="Train SPI forecast for this scale; repeatable")
     parser.add_argument("--feature-root", default=str(DEFAULT_FEATURE_ROOT))
     parser.add_argument("--artifact-root", default=str(DEFAULT_ARTIFACT_ROOT))
+    parser.add_argument("--use-helpers", choices=["auto", "yes", "no"], default="auto")
     parser.add_argument("--input-window", type=int, default=18)
     parser.add_argument("--horizon", type=int, default=12)
     parser.add_argument("--backtest-months", type=int, default=36)
@@ -1113,6 +1289,7 @@ def main() -> None:
     args = parser.parse_args()
 
     torch.set_num_threads(max(1, int(os.getenv("PREDICTION_TORCH_THREADS", "2"))))
+    use_helpers = args.use_helpers != "no"
     ensure_prediction_tables()
     datasets = discover_prediction_datasets(args.dataset)
     if args.source:
@@ -1146,6 +1323,7 @@ def main() -> None:
                 final_epochs=args.final_epochs,
                 batch_size=args.batch_size,
                 learning_rate=args.learning_rate,
+                use_helpers=use_helpers,
             )
 
 
